@@ -42,7 +42,7 @@ export default async function handler(req, res) {
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
           max_tokens: 1500,
           messages,
           tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],

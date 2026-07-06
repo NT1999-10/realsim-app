@@ -969,6 +969,150 @@ function DiagnosisCard({ diag }) {
   );
 }
 
+// ---------- アカウント設定モーダル ----------
+function AccountModal({ open, onClose, user, profile }) {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState("");
+  const [delConfirm, setDelConfirm] = useState("");
+  const downOnBg = useRef(false);
+  if (!open || !user) return null;
+
+  const rules = [
+    { ok: pw.length >= 8, label: "8文字以上" },
+    { ok: /[a-z]/.test(pw), label: "小文字を含む" },
+    { ok: /[A-Z]/.test(pw), label: "大文字を含む" },
+    { ok: /[0-9]/.test(pw), label: "数字を含む" },
+    { ok: /[^A-Za-z0-9]/.test(pw), label: "記号(!?/#など)を含む" },
+  ];
+  const pwStrong = rules.every((r) => r.ok);
+
+  const token = async () => {
+    const { data } = await supabase.auth.getSession();
+    return data.session ? data.session.access_token : null;
+  };
+
+  const changePw = async () => {
+    if (!pwStrong) { setMsg("新しいパスワードが強度条件を満たしていません"); return; }
+    if (pw !== pw2) { setMsg("確認用パスワードが一致しません"); return; }
+    setBusy("pw"); setMsg("");
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setBusy("");
+    if (error) setMsg("変更に失敗しました: " + error.message);
+    else { setMsg("パスワードを変更しました"); setPw(""); setPw2(""); }
+  };
+
+  const openPortal = async () => {
+    setBusy("portal"); setMsg("");
+    try {
+      const t = await token();
+      const r = await fetch("/api/billing-portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || "エラーが発生しました");
+      window.location.href = d.url; // Stripeポータルへ(解約・支払い方法の変更/削除)
+    } catch (e) { setMsg(String(e.message || e)); setBusy(""); }
+  };
+
+  const deleteAccount = async () => {
+    if (delConfirm !== "削除") { setMsg("確認のため、入力欄に「削除」と入力してください"); return; }
+    setBusy("del"); setMsg("");
+    try {
+      const t = await token();
+      const r = await fetch("/api/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || "削除に失敗しました");
+      await supabase.auth.signOut();
+      onClose();
+      window.alert("アカウントを削除しました。ご利用ありがとうございました。");
+      window.location.reload();
+    } catch (e) { setMsg(String(e.message || e)); setBusy(""); }
+  };
+
+  const inSt = { width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`,
+    borderRadius: 8, fontSize: 14, marginBottom: 10, fontFamily: "inherit" };
+  const secH = { fontSize: 13, fontWeight: 700, color: T.navy,
+    borderBottom: `1px solid ${T.line}`, paddingBottom: 6, margin: "18px 0 10px" };
+
+  return (
+    <div
+      onMouseDown={(e) => { downOnBg.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => {
+        if (downOnBg.current && e.target === e.currentTarget) onClose();
+        downOnBg.current = false;
+      }}
+      style={{ position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#FFF", borderRadius: 12, padding: 24, maxWidth: 440,
+        width: "100%", maxHeight: "90vh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <h3 style={{ fontSize: 18, fontWeight: 800, color: T.navy, margin: 0 }}>アカウント設定</h3>
+        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 4 }}>
+          {user.email} ／ 現在のプラン: <b>{profile && profile.plan === "pro" ? "Pro" : "Free"}</b>
+        </div>
+
+        <div style={secH}>パスワードの変更</div>
+        <input type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+          placeholder="新しいパスワード" autoComplete="new-password" style={inSt} />
+        <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)}
+          placeholder="新しいパスワード(確認)" autoComplete="new-password"
+          style={{ ...inSt, borderColor: pw2.length === 0 ? T.line : pw === pw2 ? T.good : T.real }} />
+        {pw.length > 0 && (
+          <div style={{ fontSize: 11.5, lineHeight: 1.8, background: "#F6F8FA",
+            borderRadius: 8, padding: "6px 12px", marginBottom: 10 }}>
+            {rules.map((r) => (
+              <span key={r.label} style={{ color: r.ok ? T.good : T.sub, marginRight: 10 }}>
+                {r.ok ? "✓" : "・"}{r.label}</span>))}
+          </div>
+        )}
+        <button onClick={changePw} disabled={busy === "pw"}
+          style={{ padding: "9px 16px", background: T.navy, color: "#FFF", border: "none",
+            borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            opacity: busy === "pw" ? 0.6 : 1 }}>
+          {busy === "pw" ? "変更中…" : "パスワードを変更する"}</button>
+
+        <div style={secH}>支払い・サブスクリプション管理</div>
+        <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.7, margin: "0 0 10px" }}>
+          Stripeの安全な管理画面で、サブスクリプションの解約、支払い方法(カード情報)の変更・削除、
+          請求履歴の確認ができます。解約後も現在の請求期間の終了まではProをご利用いただけます。
+        </p>
+        <button onClick={openPortal} disabled={busy === "portal"}
+          style={{ padding: "9px 16px", background: T.navy, color: "#FFF", border: "none",
+            borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            opacity: busy === "portal" ? 0.6 : 1 }}>
+          {busy === "portal" ? "接続中…" : "管理画面を開く(解約・カード変更/削除)"}</button>
+
+        <div style={{ ...secH, color: T.real, borderBottomColor: "rgba(179,64,46,0.3)" }}>
+          アカウントの削除</div>
+        <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.7, margin: "0 0 10px" }}>
+          保存した物件・リサーチ・予実データを含むすべての情報が完全に削除され、元に戻せません。
+          有効なサブスクリプションは自動的に解約されます。
+        </p>
+        <input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)}
+          placeholder="確認のため「削除」と入力" style={inSt} />
+        <button onClick={deleteAccount} disabled={busy === "del" || delConfirm !== "削除"}
+          style={{ padding: "9px 16px", background: T.real, color: "#FFF", border: "none",
+            borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            opacity: busy === "del" || delConfirm !== "削除" ? 0.5 : 1 }}>
+          {busy === "del" ? "削除中…" : "アカウントを完全に削除する"}</button>
+
+        {msg && <div style={{ fontSize: 12, color: T.warnInk, marginTop: 12,
+          lineHeight: 1.7, background: T.warnBg, borderRadius: 8, padding: "8px 10px" }}>{msg}</div>}
+        <div><button onClick={onClose} style={{ marginTop: 14, background: "none", border: "none",
+          color: T.sub, fontSize: 12.5, cursor: "pointer", textDecoration: "underline",
+          padding: 0 }}>閉じる</button></div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- 認証モーダル ----------
 function AuthModal({ open, onClose }) {
   const [tab, setTab] = useState("login");
@@ -1251,6 +1395,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [aiTick, setAiTick] = useState(0);
 
@@ -1420,6 +1565,10 @@ export default function App() {
             flexWrap: "wrap" }}>
             {authEnabled && (user
               ? <span style={{ fontSize: 11, color: T.sub }}>{user.email}
+                  <button onClick={() => setAccountOpen(true)}
+                    style={{ marginLeft: 8, background: "none", border: "none",
+                      color: T.navy, textDecoration: "underline", cursor: "pointer",
+                      fontSize: 11, padding: 0, fontWeight: 700 }}>設定</button>
                   <button onClick={() => supabase.auth.signOut()}
                     style={{ marginLeft: 8, background: "none", border: "none",
                       color: T.sub, textDecoration: "underline", cursor: "pointer",
@@ -1448,6 +1597,8 @@ export default function App() {
           onRefresh={refreshProfile}
           onUnlocked={() => { setLocalPlan("pro"); setUpgradeOpen(false); }} />
         <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+        <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)}
+          user={user} profile={profile} />
 
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {[["sim", "シミュレーション", true], ["cmp", "物件比較", true],

@@ -15,7 +15,7 @@ export const PLANS = {
 };
 
 // Stripe Payment Link 等の購入ページURLをここに設定
-export const PURCHASE_URL = "https://buy.stripe.com/test_00w6oGeFO4MD76k0yC6EU00";
+export const PURCHASE_URL = "";
 
 async function sha256hex(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));

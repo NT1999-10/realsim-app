@@ -1,5 +1,13 @@
 // Vercel Serverless Function: /api/research
-// ANTHROPIC_API_KEY は Vercel の環境変数に設定する(クライアントには出ない)
+// 認証(Supabase JWT)+プラン確認+月間クオータをサーバー側で強制してから
+// Anthropic APIを呼び出す。ANTHROPIC_API_KEYはクライアントに出ない。
+//
+// 必要な環境変数:
+//   ANTHROPIC_API_KEY
+//   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+//   (Supabase系が未設定の場合は認証なしの開発モードで動作)
+
+const AI_PER_MONTH = 10;
 
 const buildPrompt = (area, ptype) => `あなたは日本の不動産市場アナリストです。ウェブ検索を使って、以下のエリア・物件タイプの賃貸住宅市場データを調査してください。
 エリア: ${area}
@@ -22,6 +30,51 @@ const buildPrompt = (area, ptype) => `あなたは日本の不動産市場アナ
   "sources": ["参照した情報源名1", "情報源名2"]
 }`;
 
+// JWTからユーザーを特定
+async function getUser(req) {
+  const url = process.env.SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY;
+  if (!url || !anon) return { open: true }; // 認証未設定 = 開発モード
+
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!token) return { error: "ログインが必要です", status: 401 };
+
+  const r = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: anon, Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return { error: "認証に失敗しました。再ログインしてください", status: 401 };
+  const u = await r.json();
+  if (!u || !u.id) return { error: "認証に失敗しました", status: 401 };
+  return { userId: u.id };
+}
+
+// プラン確認+クオータ消費(service roleで実行)
+async function checkAndCountQuota(userId) {
+  const url = process.env.SUPABASE_URL;
+  const svc = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!svc) return { error: "サーバー設定(SERVICE_ROLE_KEY)が不足しています", status: 500 };
+  const h = { apikey: svc, Authorization: `Bearer ${svc}`, "Content-Type": "application/json" };
+
+  const pr = await fetch(
+    `${url}/rest/v1/profiles?id=eq.${userId}&select=plan,ai_used,ai_month`, { headers: h });
+  const rows = await pr.json();
+  const p = Array.isArray(rows) ? rows[0] : null;
+  if (!p) return { error: "プロファイルが見つかりません", status: 403 };
+  if (p.plan !== "pro") return { error: "AI市場調査はProプラン限定です", status: 403 };
+
+  const ym = new Date().toISOString().slice(0, 7);
+  const used = p.ai_month === ym ? p.ai_used : 0;
+  if (used >= AI_PER_MONTH) {
+    return { error: `今月のAI調査回数(${AI_PER_MONTH}回)を使い切りました。翌月1日にリセットされます`, status: 429 };
+  }
+  await fetch(`${url}/rest/v1/profiles?id=eq.${userId}`, {
+    method: "PATCH", headers: h,
+    body: JSON.stringify({ ai_used: used + 1, ai_month: ym }),
+  });
+  return { ok: true };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POSTのみ受け付けます" });
   const { area, ptype } = req.body || {};
@@ -30,9 +83,17 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "サーバーに ANTHROPIC_API_KEY が未設定です" });
 
+  // 認証+クオータ(Supabase設定時のみ強制)
+  const who = await getUser(req);
+  if (who.error) return res.status(who.status).json({ error: who.error });
+  if (!who.open) {
+    const q = await checkAndCountQuota(who.userId);
+    if (q.error) return res.status(q.status).json({ error: q.error });
+  }
+
   let messages = [{ role: "user", content: buildPrompt(area, ptype) }];
   try {
-    // pause_turn(検索付き応答の一時停止)とJSON未出力に備え、最大5回継続要求
+    // pause_turn/JSON未出力に備え、最大5回継続要求
     for (let attempt = 0; attempt < 5; attempt++) {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",

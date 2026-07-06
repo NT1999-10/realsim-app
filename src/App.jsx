@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { PLANS, PURCHASE_URL, verifyLicense, loadPlan, savePlan, aiQuota } from "./plan.js";
+import { supabase, authEnabled } from "./auth.js";
 
 // ---------- design tokens ----------
 const T = {
@@ -318,10 +319,12 @@ async function saveKey(key, value, cap) {
 }
 
 // ---------- AI market data(サーバープロキシ経由) ----------
-async function fetchMarketData(area, ptype) {
+async function fetchMarketData(area, ptype, token) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = "Bearer " + token;
   const res = await fetch("/api/research", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ area, ptype }),
   });
   const data = await res.json().catch(() => null);
@@ -923,11 +926,84 @@ function DiagnosisCard({ diag }) {
   );
 }
 
+// ---------- 認証モーダル ----------
+function AuthModal({ open, onClose }) {
+  const [tab, setTab] = useState("login");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!open) return null;
+
+  const go = async () => {
+    if (!email || !pw) { setMsg("メールアドレスとパスワードを入力してください"); return; }
+    setBusy(true); setMsg("");
+    try {
+      if (tab === "signup") {
+        const { error } = await supabase.auth.signUp({ email, password: pw });
+        if (error) throw error;
+        setMsg("確認メールを送信しました。メール内のリンクをクリックすると登録が完了します。完了後、ログインしてください。");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+        if (error) throw error;
+        onClose();
+      }
+    } catch (e) {
+      const t = String((e && e.message) || e);
+      setMsg(t.includes("Invalid login") ? "メールアドレスまたはパスワードが正しくありません"
+        : t.includes("already registered") ? "このメールアドレスは登録済みです。ログインしてください"
+        : t);
+    }
+    setBusy(false);
+  };
+
+  const inSt = { width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`,
+    borderRadius: 8, fontSize: 14, marginBottom: 10, fontFamily: "inherit" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100,
+      background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#FFF", borderRadius: 12,
+        padding: 24, maxWidth: 400, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ display: "flex", gap: 0, marginBottom: 16, border: `1px solid ${T.line}`,
+          borderRadius: 8, overflow: "hidden" }}>
+          {[["login", "ログイン"], ["signup", "新規登録"]].map(([k, l]) => (
+            <button key={k} onClick={() => { setTab(k); setMsg(""); }}
+              style={{ flex: 1, padding: "9px", border: "none", cursor: "pointer",
+                fontSize: 13, fontWeight: 700,
+                background: tab === k ? T.navy : "#FFF",
+                color: tab === k ? "#FFF" : T.ink }}>{l}</button>
+          ))}
+        </div>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="メールアドレス" style={inSt} />
+        <input type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+          placeholder="パスワード(8文字以上)" style={inSt}
+          onKeyDown={(e) => e.key === "Enter" && go()} />
+        <button onClick={go} disabled={busy} style={{ width: "100%", padding: "11px",
+          background: T.real, color: "#FFF", border: "none", borderRadius: 8,
+          fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
+          {busy ? "処理中…" : tab === "signup" ? "アカウントを作成する" : "ログインする"}</button>
+        {msg && <div style={{ fontSize: 12, color: T.warnInk, marginTop: 10,
+          lineHeight: 1.7, background: T.warnBg, borderRadius: 8, padding: "8px 10px" }}>{msg}</div>}
+        <div style={{ fontSize: 11, color: T.sub, marginTop: 12, lineHeight: 1.7 }}>
+          保存した物件・プラン状態がアカウントに紐づき、どの端末からでも同じ環境で使えるようになります。
+        </div>
+        <button onClick={onClose} style={{ marginTop: 12, background: "none", border: "none",
+          color: T.sub, fontSize: 12.5, cursor: "pointer", textDecoration: "underline",
+          padding: 0 }}>閉じる</button>
+      </div>
+    </div>
+  );
+}
+
 // ---------- アップグレードモーダル ----------
-function UpgradeModal({ open, onClose, onUnlocked }) {
+function UpgradeModal({ open, onClose, onUnlocked, authed, email, onRefresh }) {
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
+  const [checking, setChecking] = useState(false);
   if (!open) return null;
+
   const tryKey = async () => {
     if (await verifyLicense(key)) {
       savePlan("pro"); setMsg(""); onUnlocked();
@@ -935,6 +1011,22 @@ function UpgradeModal({ open, onClose, onUnlocked }) {
       setMsg("ライセンスキーが正しくありません。形式: RP-XXXX-XXXX-XXXXXX");
     }
   };
+  const purchaseHref = PURCHASE_URL
+    ? PURCHASE_URL + (email
+        ? (PURCHASE_URL.includes("?") ? "&" : "?") + "prefilled_email=" + encodeURIComponent(email)
+        : "")
+    : "";
+  const checkNow = async () => {
+    setChecking(true); setMsg("");
+    await onRefresh();
+    setChecking(false);
+    setMsg("最新のプラン状態を取得しました。まだ開放されていない場合は、決済処理の反映まで1〜2分待って再度お試しください。");
+  };
+
+  const linkBtn = { display: "block", textAlign: "center", padding: "11px",
+    background: T.real, color: "#FFF", borderRadius: 8, fontWeight: 700,
+    fontSize: 14, textDecoration: "none", marginBottom: 14 };
+
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100,
       background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
@@ -947,31 +1039,55 @@ function UpgradeModal({ open, onClose, onUnlocked }) {
           詳細モード(全パラメータ) ／ 分析タブ(感度・ストレス・出口) ／ 運用管理 ／
           AI市場調査 月10回 ／ 物件保存 無制限 ／ IRR・CCR・DSCR比較
         </p>
-        {PURCHASE_URL ? (
-          <a href={PURCHASE_URL} target="_blank" rel="noreferrer"
-            style={{ ...{ display: "block", textAlign: "center" }, padding: "11px",
-              background: T.real, color: "#FFF", borderRadius: 8, fontWeight: 700,
-              fontSize: 14, textDecoration: "none", marginBottom: 14 }}>
-            購入ページへ(¥1,480/月)</a>
+
+        {authed !== null ? (
+          <>
+            {PURCHASE_URL ? (
+              <a href={purchaseHref} target="_blank" rel="noreferrer" style={linkBtn}>
+                購入ページへ(¥1,480/月)</a>
+            ) : (
+              <div style={{ fontSize: 11.5, color: T.warnInk, background: T.warnBg,
+                borderRadius: 8, padding: "8px 10px", marginBottom: 14, lineHeight: 1.6 }}>
+                (開発メモ)購入リンクが未設定です。src/plan.js の PURCHASE_URL に
+                StripeのPayment Link URLを設定してください。</div>
+            )}
+            <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.8, margin: "0 0 10px" }}>
+              登録メールアドレス(<b>{email}</b>)のまま決済してください。
+              決済が完了すると、自動的にProプランへ切り替わります。
+            </p>
+            <button onClick={checkNow} disabled={checking} style={{ padding: "9px 16px",
+              background: T.navy, color: "#FFF", border: "none", borderRadius: 8,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              opacity: checking ? 0.6 : 1 }}>
+              {checking ? "確認中…" : "決済後、反映を確認する"}</button>
+          </>
         ) : (
-          <div style={{ fontSize: 11.5, color: T.warnInk, background: T.warnBg,
-            borderRadius: 8, padding: "8px 10px", marginBottom: 14, lineHeight: 1.6 }}>
-            (開発メモ)購入リンクが未設定です。src/plan.js の PURCHASE_URL に
-            Stripe Payment Link 等のURLを設定してください。</div>
+          <>
+            {PURCHASE_URL ? (
+              <a href={PURCHASE_URL} target="_blank" rel="noreferrer" style={linkBtn}>
+                購入ページへ(¥1,480/月)</a>
+            ) : (
+              <div style={{ fontSize: 11.5, color: T.warnInk, background: T.warnBg,
+                borderRadius: 8, padding: "8px 10px", marginBottom: 14, lineHeight: 1.6 }}>
+                (開発メモ)購入リンクが未設定です。src/plan.js の PURCHASE_URL に
+                Stripe Payment Link 等のURLを設定してください。</div>
+            )}
+            <div style={{ fontSize: 12, color: T.sub, marginBottom: 6 }}>
+              購入後に届くライセンスキーを入力:</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={key} onChange={(e) => setKey(e.target.value)}
+                placeholder="RP-XXXX-XXXX-XXXXXX"
+                style={{ flex: 1, padding: "9px 11px", border: `1px solid ${T.line}`,
+                  borderRadius: 8, fontSize: 14, fontFamily: "inherit",
+                  textTransform: "uppercase" }} />
+              <button onClick={tryKey} style={{ padding: "9px 16px", background: T.navy,
+                color: "#FFF", border: "none", borderRadius: 8, fontSize: 13,
+                fontWeight: 700, cursor: "pointer" }}>認証する</button>
+            </div>
+          </>
         )}
-        <div style={{ fontSize: 12, color: T.sub, marginBottom: 6 }}>
-          購入後に届くライセンスキーを入力:</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={key} onChange={(e) => setKey(e.target.value)}
-            placeholder="RP-XXXX-XXXX-XXXXXX"
-            style={{ flex: 1, padding: "9px 11px", border: `1px solid ${T.line}`,
-              borderRadius: 8, fontSize: 14, fontFamily: "inherit",
-              textTransform: "uppercase" }} />
-          <button onClick={tryKey} style={{ padding: "9px 16px", background: T.navy,
-            color: "#FFF", border: "none", borderRadius: 8, fontSize: 13,
-            fontWeight: 700, cursor: "pointer" }}>認証する</button>
-        </div>
-        {msg && <div style={{ fontSize: 12, color: T.real, marginTop: 8 }}>{msg}</div>}
+        {msg && <div style={{ fontSize: 12, color: authed !== null ? T.sub : T.real,
+          marginTop: 10, lineHeight: 1.7 }}>{msg}</div>}
         <button onClick={onClose} style={{ marginTop: 16, background: "none", border: "none",
           color: T.sub, fontSize: 12.5, cursor: "pointer", textDecoration: "underline",
           padding: 0 }}>Freeのまま続ける</button>
@@ -1031,12 +1147,40 @@ export default function App() {
   const [tab, setTab] = useState("sim");
   const [mode, setMode] = useState("easy"); // かんたん/詳細
   const [activePreset, setActivePreset] = useState(null);
-  // プラン(フリーミアム)
-  const [plan, setPlan] = useState(loadPlan());
+  // プラン(フリーミアム) + アカウント認証
+  const [localPlan, setLocalPlan] = useState(loadPlan()); // 認証未設定時のフォールバック
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authOpen, setAuthOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [aiTick, setAiTick] = useState(0);
-  const quotaLeft = useMemo(
-    () => (plan === "pro" ? aiQuota(plan).left : 0), [plan, aiTick]);
+
+  useEffect(() => {
+    if (!authEnabled) return;
+    supabase.auth.getSession().then(({ data }) => setUser((data.session && data.session.user) || null));
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      (_e, session) => setUser((session && session.user) || null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const refreshProfile = async () => {
+    if (!authEnabled || !user) { setProfile(null); return; }
+    const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+    setProfile(data || null);
+  };
+  useEffect(() => { refreshProfile(); }, [user]);
+
+  const plan = authEnabled
+    ? (profile && profile.plan === "pro" ? "pro" : "free")
+    : localPlan;
+  const quotaLeft = useMemo(() => {
+    if (authEnabled) {
+      if (!profile || profile.plan !== "pro") return 0;
+      const ym = new Date().toISOString().slice(0, 7);
+      return Math.max(0, 10 - (profile.ai_month === ym ? profile.ai_used : 0));
+    }
+    return plan === "pro" ? aiQuota(plan).left : 0;
+  }, [plan, aiTick, profile]);
   const isPro = plan === "pro";
   const [records, setRecords] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -1073,16 +1217,21 @@ export default function App() {
     setProperties(await saveKey(KEY_PROPS, properties.filter((r) => r.id !== id)));
 
   const runFetch = async () => {
+    if (authEnabled && !user) { setAuthOpen(true); return; }
     if (!isPro) { setUpgradeOpen(true); return; }
-    const q = aiQuota(plan);
-    if (q.left <= 0) {
+    if (quotaLeft <= 0) {
       setAiState({ status: "error", data: null,
         error: "今月のAI調査回数(10回)を使い切りました。翌月1日にリセットされます" });
       return;
     }
     setAiState({ status: "loading", data: null, error: null });
     try {
-      const d = await fetchMarketData(area, ptype);
+      let token = null;
+      if (authEnabled) {
+        const { data } = await supabase.auth.getSession();
+        token = data.session ? data.session.access_token : null;
+      }
+      const d = await fetchMarketData(area, ptype, token);
       setAiState({ status: "done", data: d, error: null });
       // 成功したら自動でライブラリへ保存(エリア・物件タイプ・パラメータ・日時)
       const rec = {
@@ -1093,7 +1242,8 @@ export default function App() {
       };
       const next = await saveKey(KEY_RESEARCH, [rec, ...records], 50);
       setRecords(next);
-      aiQuota(plan).inc(); setAiTick((t) => t + 1);
+      if (authEnabled) refreshProfile(); else aiQuota(plan).inc();
+      setAiTick((t) => t + 1);
     } catch (e) {
       setAiState({ status: "error", data: null, error: String(e.message || e) });
     }
@@ -1168,13 +1318,24 @@ export default function App() {
           </p>
           <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center",
             flexWrap: "wrap" }}>
+            {authEnabled && (user
+              ? <span style={{ fontSize: 11, color: T.sub }}>{user.email}
+                  <button onClick={() => supabase.auth.signOut()}
+                    style={{ marginLeft: 8, background: "none", border: "none",
+                      color: T.sub, textDecoration: "underline", cursor: "pointer",
+                      fontSize: 11, padding: 0 }}>ログアウト</button></span>
+              : <button onClick={() => setAuthOpen(true)}
+                  style={{ padding: "4px 14px", background: T.navy, color: "#FFF",
+                    border: "none", borderRadius: 12, fontSize: 11, fontWeight: 700,
+                    cursor: "pointer" }}>ログイン / 新規登録</button>)}
             <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 14px",
               borderRadius: 12, border: `1px solid ${T.navy}`,
               background: isPro ? T.navy : "#FFF",
               color: isPro ? "#FFF" : T.navy }}>{PLANS[plan].label}プラン</span>
             {isPro
               ? <span style={{ fontSize: 11, color: T.sub }}>AI市場調査 今月あと{quotaLeft}回</span>
-              : <button onClick={() => setUpgradeOpen(true)} style={{ padding: "4px 14px",
+              : <button onClick={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))}
+                  style={{ padding: "4px 14px",
                   background: T.real, color: "#FFF", border: "none", borderRadius: 12,
                   fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                   Proにアップグレード</button>}
@@ -1182,7 +1343,11 @@ export default function App() {
         </header>
 
         <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)}
-          onUnlocked={() => { setPlan("pro"); setUpgradeOpen(false); }} />
+          authed={authEnabled ? !!user : null}
+          email={user ? user.email : ""}
+          onRefresh={refreshProfile}
+          onUnlocked={() => { setLocalPlan("pro"); setUpgradeOpen(false); }} />
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
 
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {[["sim", "シミュレーション", true], ["cmp", "物件比較", true],

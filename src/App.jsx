@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ReferenceLine, ResponsiveContainer,
@@ -294,26 +294,69 @@ const KEY_PROPS = "saved-properties";
 const KEY_ACTUALS = "ops-actuals";
 const memStore = {}; // window.storage非対応環境(ローカル等)向けフォールバック
 
-async function loadKey(key, fallback) {
-  if (typeof window !== "undefined" && window.storage) {
-    try {
-      const r = await window.storage.get(key);
-      return r && r.value ? JSON.parse(r.value) : fallback;
-    } catch { return fallback; } // キー未作成時もここに来る
-  }
+function localLoad(key, fallback) {
   try {
     const r = localStorage.getItem("rs-" + key);
     return r ? JSON.parse(r) : fallback;
   } catch { return key in memStore ? memStore[key] : fallback; }
 }
+function localSave(key, v) {
+  try { localStorage.setItem("rs-" + key, JSON.stringify(v)); }
+  catch (e) { memStore[key] = v; }
+}
+async function cloudSession() {
+  if (!authEnabled) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session || null;
+  } catch { return null; }
+}
+
+async function loadKey(key, fallback) {
+  // ログイン中はアカウント(Supabase)が正。未ログイン時は端末ローカル保存
+  const session = await cloudSession();
+  if (session) {
+    try {
+      const { data, error } = await supabase.from("user_data")
+        .select("value").eq("key", key).maybeSingle();
+      if (!error && data && data.value != null) return data.value;
+      // クラウド未保存なら、端末に残っている既存データを初回移行
+      const local = localLoad(key, undefined);
+      if (local !== undefined) {
+        await supabase.from("user_data").upsert(
+          { user_id: session.user.id, key, value: local },
+          { onConflict: "user_id,key" });
+        return local;
+      }
+      return fallback;
+    } catch (e) { /* 通信断などはローカルへフォールバック */ }
+  }
+  if (typeof window !== "undefined" && window.storage) {
+    try {
+      const r = await window.storage.get(key);
+      return r && r.value ? JSON.parse(r.value) : fallback;
+    } catch { return fallback; }
+  }
+  return localLoad(key, fallback);
+}
 
 async function saveKey(key, value, cap) {
   const v = cap && Array.isArray(value) ? value.slice(0, cap) : value;
+  const session = await cloudSession();
+  if (session) {
+    try {
+      await supabase.from("user_data").upsert(
+        { user_id: session.user.id, key, value: v,
+          updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" });
+    } catch (e) { console.error(e); }
+    localSave(key, v); // 通信断に備えた端末側の控え
+    return v;
+  }
   if (typeof window !== "undefined" && window.storage) {
     try { await window.storage.set(key, JSON.stringify(v)); } catch (e) { console.error(e); }
   } else {
-    try { localStorage.setItem("rs-" + key, JSON.stringify(v)); }
-    catch (e) { memStore[key] = v; }
+    localSave(key, v);
   }
   return v;
 }
@@ -931,12 +974,28 @@ function AuthModal({ open, onClose }) {
   const [tab, setTab] = useState("login");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const downOnBg = useRef(false);
   if (!open) return null;
 
+  const rules = [
+    { ok: pw.length >= 8, label: "8文字以上" },
+    { ok: /[a-z]/.test(pw), label: "小文字を含む" },
+    { ok: /[A-Z]/.test(pw), label: "大文字を含む" },
+    { ok: /[0-9]/.test(pw), label: "数字を含む" },
+    { ok: /[^A-Za-z0-9]/.test(pw), label: "記号(!?/#など)を含む" },
+  ];
+  const pwStrong = rules.every((r) => r.ok);
+  const pwMatch = pw === pw2;
+
   const go = async () => {
-    if (!email || !pw) { setMsg("メールアドレスとパスワードを入力してください"); return; }
+    if (!email) { setMsg("メールアドレスを入力してください"); return; }
+    if (tab === "signup") {
+      if (!pwStrong) { setMsg("パスワードが条件を満たしていません。下のチェックリストをご確認ください"); return; }
+      if (!pwMatch) { setMsg("確認用パスワードが一致しません"); return; }
+    } else if (!pw) { setMsg("パスワードを入力してください"); return; }
     setBusy(true); setMsg("");
     try {
       if (tab === "signup") {
@@ -960,15 +1019,22 @@ function AuthModal({ open, onClose }) {
   const inSt = { width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`,
     borderRadius: 8, fontSize: 14, marginBottom: 10, fontFamily: "inherit" };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100,
-      background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
-      justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#FFF", borderRadius: 12,
-        padding: 24, maxWidth: 400, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+    <div
+      onMouseDown={(e) => { downOnBg.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => {
+        if (downOnBg.current && e.target === e.currentTarget) onClose();
+        downOnBg.current = false;
+      }}
+      style={{ position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#FFF", borderRadius: 12,
+        padding: 24, maxWidth: 400, width: "100%", maxHeight: "90vh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
         <div style={{ display: "flex", gap: 0, marginBottom: 16, border: `1px solid ${T.line}`,
           borderRadius: 8, overflow: "hidden" }}>
           {[["login", "ログイン"], ["signup", "新規登録"]].map(([k, l]) => (
-            <button key={k} onClick={() => { setTab(k); setMsg(""); }}
+            <button key={k} onClick={() => { setTab(k); setMsg(""); setPw2(""); }}
               style={{ flex: 1, padding: "9px", border: "none", cursor: "pointer",
                 fontSize: 13, fontWeight: 700,
                 background: tab === k ? T.navy : "#FFF",
@@ -976,18 +1042,43 @@ function AuthModal({ open, onClose }) {
           ))}
         </div>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="メールアドレス" style={inSt} />
+          placeholder="メールアドレス" style={inSt} autoComplete="email" />
         <input type="password" value={pw} onChange={(e) => setPw(e.target.value)}
-          placeholder="パスワード(8文字以上)" style={inSt}
-          onKeyDown={(e) => e.key === "Enter" && go()} />
-        <button onClick={go} disabled={busy} style={{ width: "100%", padding: "11px",
-          background: T.real, color: "#FFF", border: "none", borderRadius: 8,
-          fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
+          placeholder="パスワード" style={inSt}
+          autoComplete={tab === "signup" ? "new-password" : "current-password"}
+          onKeyDown={(e) => tab === "login" && e.key === "Enter" && go()} />
+        {tab === "signup" && (
+          <>
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)}
+              placeholder="パスワード(確認のためもう一度)"
+              autoComplete="new-password"
+              style={{ ...inSt,
+                borderColor: pw2.length === 0 ? T.line : pwMatch ? T.good : T.real }}
+              onKeyDown={(e) => e.key === "Enter" && go()} />
+            {pw2.length > 0 && !pwMatch && (
+              <div style={{ fontSize: 11.5, color: T.real, margin: "-4px 0 8px" }}>
+                パスワードが一致していません</div>
+            )}
+            <div style={{ fontSize: 11.5, lineHeight: 1.9, background: "#F6F8FA",
+              borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+              {rules.map((r) => (
+                <div key={r.label} style={{ color: r.ok ? T.good : T.sub }}>
+                  {r.ok ? "✓" : "・"} {r.label}</div>
+              ))}
+            </div>
+          </>
+        )}
+        <button onClick={go}
+          disabled={busy || (tab === "signup" && (!pwStrong || !pwMatch || pw2.length === 0))}
+          style={{ width: "100%", padding: "11px",
+            background: T.real, color: "#FFF", border: "none", borderRadius: 8,
+            fontSize: 14, fontWeight: 700, cursor: "pointer",
+            opacity: busy || (tab === "signup" && (!pwStrong || !pwMatch || pw2.length === 0)) ? 0.5 : 1 }}>
           {busy ? "処理中…" : tab === "signup" ? "アカウントを作成する" : "ログインする"}</button>
         {msg && <div style={{ fontSize: 12, color: T.warnInk, marginTop: 10,
           lineHeight: 1.7, background: T.warnBg, borderRadius: 8, padding: "8px 10px" }}>{msg}</div>}
         <div style={{ fontSize: 11, color: T.sub, marginTop: 12, lineHeight: 1.7 }}>
-          保存した物件・プラン状態がアカウントに紐づき、どの端末からでも同じ環境で使えるようになります。
+          保存した物件・リサーチ・プラン状態がアカウントに紐づき、どの端末からでも同じ環境で使えるようになります。
         </div>
         <button onClick={onClose} style={{ marginTop: 12, background: "none", border: "none",
           color: T.sub, fontSize: 12.5, cursor: "pointer", textDecoration: "underline",
@@ -1002,6 +1093,7 @@ function UpgradeModal({ open, onClose, onUnlocked, authed, email, onRefresh }) {
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
   const [checking, setChecking] = useState(false);
+  const downOnBg = useRef(false);
   if (!open) return null;
 
   const tryKey = async () => {
@@ -1028,11 +1120,18 @@ function UpgradeModal({ open, onClose, onUnlocked, authed, email, onRefresh }) {
     fontSize: 14, textDecoration: "none", marginBottom: 14 };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100,
+    <div
+      onMouseDown={(e) => { downOnBg.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => {
+        if (downOnBg.current && e.target === e.currentTarget) onClose();
+        downOnBg.current = false;
+      }}
+      style={{ position: "fixed", inset: 0, zIndex: 100,
       background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#FFF", borderRadius: 12,
-        padding: 24, maxWidth: 440, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+      <div style={{ background: "#FFF", borderRadius: 12,
+        padding: 24, maxWidth: 440, width: "100%", maxHeight: "90vh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
         <h3 style={{ fontSize: 18, fontWeight: 800, color: T.navy, margin: "0 0 4px" }}>
           Proプランで全機能を開放</h3>
         <p style={{ fontSize: 12.5, color: T.sub, margin: "0 0 12px", lineHeight: 1.7 }}>
@@ -1189,12 +1288,13 @@ export default function App() {
   useEffect(() => {
     loadKey(KEY_RESEARCH, []).then(setRecords);
     loadKey(KEY_PROPS, []).then(setProperties);
-    loadKey(KEY_ACTUALS, null).then((a) => { if (a) setActuals(a); });
+    loadKey(KEY_ACTUALS, null).then((a) =>
+      setActuals(a || { startYear: new Date().getFullYear(), items: [] }));
     loadKey("ui-mode", "easy").then(setMode);
-    if (typeof window === "undefined" || !window.storage) {
-      setStorageNote("この環境は永続ストレージ非対応のため、保存はこのセッション中のみ有効です");
-    }
-  }, []);
+    setStorageNote(authEnabled && !user
+      ? "ログインすると、保存データ(リサーチ・物件・予実)がアカウントに保存され、他の端末からも利用できます"
+      : "");
+  }, [user]);
   const switchMode = (k) => {
     if (k === "pro" && !isPro) { setUpgradeOpen(true); return; }
     setMode(k); saveKey("ui-mode", k);

@@ -321,8 +321,10 @@ async function loadKey(key, fallback) {
         .select("value").eq("key", key).maybeSingle();
       if (!error && data && data.value != null) return data.value;
       // クラウド未保存なら、端末に残っている既存データを初回移行
+      // (別ユーザーの控えデータを取り込まないよう所有者を確認)
+      const owner = localLoad("owner", null);
       const local = localLoad(key, undefined);
-      if (local !== undefined) {
+      if (local !== undefined && (!owner || owner === session.user.id)) {
         await supabase.from("user_data").upsert(
           { user_id: session.user.id, key, value: local },
           { onConflict: "user_id,key" });
@@ -340,6 +342,15 @@ async function loadKey(key, fallback) {
   return localLoad(key, fallback);
 }
 
+const SYNCED_KEYS = [KEY_RESEARCH, KEY_PROPS, KEY_ACTUALS, "ui-mode"];
+function purgeLocalMirror() {
+  try {
+    for (const k of SYNCED_KEYS) localStorage.removeItem("rs-" + k);
+    localStorage.removeItem("rs-owner");
+  } catch (e) { /* noop */ }
+  for (const k of SYNCED_KEYS) delete memStore[k];
+}
+
 async function saveKey(key, value, cap) {
   const v = cap && Array.isArray(value) ? value.slice(0, cap) : value;
   const session = await cloudSession();
@@ -351,6 +362,7 @@ async function saveKey(key, value, cap) {
         { onConflict: "user_id,key" });
     } catch (e) { console.error(e); }
     localSave(key, v); // 通信断に備えた端末側の控え
+    localSave("owner", session.user.id);
     return v;
   }
   if (typeof window !== "undefined" && window.storage) {
@@ -1096,7 +1108,7 @@ function AccountModal({ open, onClose, user, profile }) {
           有効なサブスクリプションは自動的に解約されます。
         </p>
         <input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)}
-          placeholder="確認のため「削除」と入力" style={inSt} />
+          placeholder="確認のため「削除」と入力" style={inSt} autoComplete="off" />
         <button onClick={deleteAccount} disabled={busy === "del" || delConfirm !== "削除"}
           style={{ padding: "9px 16px", background: T.real, color: "#FFF", border: "none",
             borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
@@ -1402,8 +1414,11 @@ export default function App() {
   useEffect(() => {
     if (!authEnabled) return;
     supabase.auth.getSession().then(({ data }) => setUser((data.session && data.session.user) || null));
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      (_e, session) => setUser((session && session.user) || null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      const u = (session && session.user) || null;
+      setUser(u);
+      if (!u) purgeLocalMirror(); // ログアウト時: 端末に残る控えデータを消去
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -1426,6 +1441,15 @@ export default function App() {
     return plan === "pro" ? aiQuota(plan).left : 0;
   }, [plan, aiTick, profile]);
   const isPro = plan === "pro";
+
+  // ログアウトやプラン降格を検知したら、Pro限定のタブ・モードから退出する
+  useEffect(() => {
+    const settled = !authEnabled || !user || profile !== null; // プラン確定を待つ
+    if (settled && !isPro) {
+      if (tab === "ana" || tab === "ops") setTab("sim");
+      if (mode === "pro") setMode("easy");
+    }
+  }, [isPro, user, profile, tab, mode]);
   const [records, setRecords] = useState([]);
   const [properties, setProperties] = useState([]);
   const [actuals, setActuals] = useState({ startYear: new Date().getFullYear(), items: [] });
@@ -1591,14 +1615,14 @@ export default function App() {
           </div>
         </header>
 
-        <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)}
+        {upgradeOpen && <UpgradeModal open onClose={() => setUpgradeOpen(false)}
           authed={authEnabled ? !!user : null}
           email={user ? user.email : ""}
           onRefresh={refreshProfile}
-          onUnlocked={() => { setLocalPlan("pro"); setUpgradeOpen(false); }} />
-        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
-        <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)}
-          user={user} profile={profile} />
+          onUnlocked={() => { setLocalPlan("pro"); setUpgradeOpen(false); }} />}
+        {authOpen && <AuthModal open onClose={() => setAuthOpen(false)} />}
+        {accountOpen && <AccountModal open onClose={() => setAccountOpen(false)}
+          user={user} profile={profile} />}
 
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {[["sim", "シミュレーション", true], ["cmp", "物件比較", true],
@@ -2031,8 +2055,8 @@ export default function App() {
             onUpgrade={() => setUpgradeOpen(true)}
             onSave={saveCurrentProperty} onLoad={loadProperty} onDelete={deleteProperty} />
         )}
-        {tab === "ana" && <AnalysisTab p={p} />}
-        {tab === "ops" && (
+        {tab === "ana" && isPro && <AnalysisTab p={p} />}
+        {tab === "ops" && isPro && (
           <OpsTab p={p} setP={setP} actuals={actuals} persist={persistActuals} />
         )}
 

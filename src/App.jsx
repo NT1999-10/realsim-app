@@ -397,7 +397,7 @@ const h2St = { fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
 const btnSt = (bg) => ({ padding: "8px 16px", background: bg, color: "#FFF",
   border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer" });
 
-function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDelete }) {
+function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDelete, onReport }) {
   const locked = plan !== "pro";
   const [name, setName] = useState("");
   const rows = useMemo(
@@ -433,6 +433,12 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
 
       <section style={cardSt}>
         <h2 style={h2St}>保存済み物件の横並び比較({rows.length}件)</h2>
+        {rows.length > 0 && (
+          <div style={{ margin: "0 0 14px" }}>
+            <button onClick={() => (locked ? onUpgrade() : onReport(rows))} style={btnSt(T.navy)}>
+              📄 比較レポートを出力(PDF){locked ? " — Pro" : ""}</button>
+          </div>
+        )}
         {rows.length === 0 ? (
           <div style={{ fontSize: 12.5, color: T.sub }}>
             まだ保存された物件がありません。シミュレーションタブで条件を作り、上のフォームで保存すると比較表に並びます。
@@ -981,6 +987,427 @@ function DiagnosisCard({ diag }) {
   );
 }
 
+// ---------- レポート出力(テンプレート型・AI不使用) ----------
+const REPORT_DISCLAIMER = "本レポートはユーザーが設定した前提に基づく試算であり、将来の収支を保証するものではありません。投資助言・税務相談に該当するものではなく、最終的な投資判断は一次資料の確認のうえご自身の責任で行ってください。";
+
+const REPORT_CSS = `
+  .rp-overlay{position:fixed;inset:0;z-index:200;background:#4A5158;overflow:auto;padding:20px 12px 60px}
+  .rp-bar{position:sticky;top:0;z-index:210;display:flex;gap:10px;align-items:center;justify-content:center;
+    flex-wrap:wrap;padding:10px;background:rgba(22,34,46,.94);border-radius:12px;max-width:1122px;margin:0 auto 18px}
+  .rp-bar input{padding:9px 14px;border-radius:8px;border:none;font-size:14px;width:300px;font-family:inherit}
+  .rp-bar button{padding:9px 20px;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .sheet{width:1122px;height:793px;background:#fff;margin:0 auto 20px;padding:50px 56px;
+    box-shadow:0 10px 34px rgba(0,0,0,.45);position:relative;overflow:hidden;color:#16222E;
+    font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif}
+  .sheet h1{font-size:34px;margin:0 0 6px;color:#1F3A52;line-height:1.4}
+  .sheet h2{font-size:21px;margin:0 0 16px;color:#1F3A52;border-bottom:3px solid #1F3A52;padding-bottom:8px}
+  .sheet h3{font-size:15px;margin:0 0 8px;color:#1F3A52}
+  .sheet .brand{font-size:13px;font-weight:700;letter-spacing:.2em;color:#B3402E;margin-bottom:14px}
+  .sheet .foot{position:absolute;left:56px;right:56px;bottom:22px;display:flex;justify-content:space-between;
+    font-size:11px;color:#8A97A3;border-top:1px solid #E2E8EF;padding-top:8px}
+  .sheet table.pt{border-collapse:collapse;width:100%;font-size:12.5px}
+  .sheet table.pt td{padding:6px 10px;border-bottom:1px solid #E9EDF1}
+  .sheet table.pt td:first-child{color:#5B6B7A;width:47%}
+  .sheet table.pt td:last-child{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .sheet table.dt{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sheet table.dt th{padding:8px 10px;border-bottom:2px solid #1F3A52;color:#1F3A52;text-align:right}
+  .sheet table.dt th:first-child{text-align:left}
+  .sheet table.dt td{padding:7px 10px;border-bottom:1px solid #E9EDF1;text-align:right}
+  .sheet table.dt td:first-child{text-align:left;font-weight:700}
+  .sheet .para{font-size:13.5px;line-height:2;text-align:justify}
+  .sheet .kpi3{display:flex;gap:16px;margin:24px 0}
+  .sheet .kpi3>div{flex:1;border:1px solid #E2E8EF;border-radius:12px;padding:15px 18px}
+  .sheet .kpi3 .l{font-size:12px;color:#5B6B7A}
+  .sheet .kpi3 .v{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px}
+  .sheet .flagline{font-size:13px;line-height:2}
+  .sheet .verdict-badge{display:inline-flex;align-items:center;gap:10px;border-radius:14px;
+    padding:10px 22px;font-size:19px;font-weight:800}
+  @media print{
+    @page{size:A4 landscape;margin:0}
+    body *{visibility:hidden}
+    .rp-overlay{position:absolute;inset:auto;top:0;left:0;right:0;padding:0;background:#fff;overflow:visible}
+    .rp-overlay,.rp-overlay *{visibility:visible}
+    .rp-bar{display:none}
+    .sheet{margin:0;box-shadow:none;page-break-after:always;width:1122px;height:792px}
+  }
+`;
+
+// 診断結果からレポート文章をルールベースで組み立てる(パターン分岐、AI不使用)
+function buildNarrative(p, m, diag, exit, optLast) {
+  const gap = optLast.cum - m.cumFinal;
+  const best = exit.reduce((a, b) => (b.総合損益 > a.総合損益 ? b : a), exit[0]);
+  const n = {};
+  n.overall =
+    diag.level === "ok"
+      ? `本物件は、金利上昇・家賃下落・空室損・修繕費増を織り込んだ保守的な前提の下でも、${p.simYears}年間の保有と売却を通じて約${fmtMan(m.total)}の最終黒字が見込まれる、健全性の高い収支構造と評価できる。`
+      : diag.level === "warn"
+      ? `本物件は、保守的な前提の下で最終損益が約${fmtMan(Math.abs(m.total))}の${m.total >= 0 ? "黒字" : "赤字"}と試算されるものの、注意を要する指標が存在する。前提条件の妥当性確認と、後述するリスク項目への対応策の検討を推奨する。`
+      : `本物件は、保守的な前提の下で約${fmtMan(Math.abs(m.total))}の最終${m.total >= 0 ? "黒字にとどまり" : "赤字となり"}、重大な危険シグナルが検出されている。現条件での取得判断は推奨されず、価格・融資条件・賃料想定の見直し、または見送りの検討が妥当である。`;
+  n.funding =
+    m.dscr == null ? "借入がなく全額自己資金による取得のため、返済リスクは存在しない。"
+    : m.dscr >= 1.3 ? `初年度DSCR(返済余裕率)は${m.dscr.toFixed(2)}であり、金融機関が目安とする1.2〜1.3を上回る。空室や金利上昇に対して一定の緩衝を備えた資金計画である。`
+    : m.dscr >= 1.1 ? `初年度DSCRは${m.dscr.toFixed(2)}と、金融機関の目安である1.2〜1.3をやや下回る。自己資金の積み増しや融資条件の改善により、返済余裕を厚くすることが望ましい。`
+    : `初年度DSCRは${m.dscr.toFixed(2)}にとどまり、返済余裕がほとんどない。わずかな空室や金利上昇で持ち出しに転じる構造であり、資金計画の抜本的な見直しが必要である。`;
+  n.trajectory =
+    (m.firstDeficitYear
+      ? `単年キャッシュフローは${m.firstDeficitYear}年目に赤字へ転換する試算である。家賃の経年下落・金利上昇・修繕費の増加が複合的に累積するためであり、当該期以降は手元資金による補填を想定しておく必要がある。`
+      : `単年キャッシュフローは全保有期間を通じて黒字を維持する試算であり、運営費・返済・税負担を賃料収入で吸収できる収益構造である。`) +
+    (gap >= 0
+      ? ` なお、満室・金利固定を仮定した楽観シナリオとの累積差額は${p.simYears}年間で約${fmtMan(gap)}にのぼり、簡易シミュレーションのみに依拠した判断には注意を要する。`
+      : ` 更新料・礼金収入の寄与により、現実シナリオが楽観シナリオを約${fmtMan(-gap)}上回る点は、本物件の収益構造上の強みといえる。`);
+  const pay = m.real.find((r) => r.cum >= m.sale.initialEquity);
+  n.payback = pay
+    ? `投下自己資金約${fmtMan(m.sale.initialEquity)}は、賃料収入のみで${pay.year}年目に回収される見込みである。`
+    : `投下自己資金は賃料収入のみでは回収されず、売却益に依存する回収構造である点に留意が必要である。`;
+  n.exit = `売却時期の総当たり分析によれば、${best.year}年目の売却が最終損益約${best.総合損益.toLocaleString()}万円で最適となる。残債の逓減と建物劣化・賃料下落のバランスにより最適点が形成されるため、満期まで保有し続けることが必ずしも最適とは限らない。`;
+  n.bestExit = best;
+  return n;
+}
+
+function SheetFoot({ page, total, title }) {
+  return (
+    <div className="foot">
+      <span>現実派 — 不動産収支シミュレーター ／ {title}</span>
+      <span>{page} / {total}</span>
+    </div>
+  );
+}
+
+function ReportView({ p, initialTitle, onClose }) {
+  const [title, setTitle] = useState(initialTitle || "検討物件 収支分析レポート");
+  const m = useMemo(() => computeMetrics(p), [p]);
+  const opt = useMemo(() => simulate(p, false), [p]);
+  const diag = useMemo(() => diagnose(p, m), [p, m]);
+  const exit = useMemo(() => exitCurve(p), [p]);
+  const n = useMemo(() => buildNarrative(p, m, diag, exit, opt[opt.length - 1]), [p, m, diag, exit, opt]);
+  const stress = useMemo(() => {
+    const presets = [
+      { name: "ベース", mod: (q) => q },
+      { name: "中度ストレス", mod: (q) => ({ ...q, rate0: q.rate0 + 1, vacancyMonths: q.vacancyMonths * 1.5, rentDecline: q.rentDecline + 0.5, repairInfl: q.repairInfl + 1 }) },
+      { name: "重度ストレス", mod: (q) => ({ ...q, rate0: q.rate0 + 2, vacancyMonths: q.vacancyMonths * 2, rentDecline: q.rentDecline + 1, restorationCost: q.restorationCost * 1.5, exitYieldPct: q.exitYieldPct + 1 }) },
+    ];
+    return presets.map((s) => ({ ...s, m: computeMetrics(s.mod(p)) }));
+  }, [p]);
+
+  const chartData = m.real.map((r, i) => ({
+    year: r.year,
+    現実: Math.round(r.cum / 10000),
+    楽観: Math.round(opt[i].cum / 10000),
+    単年CF: Math.round(r.cf / 10000),
+    残債: Math.round(r.balance / 10000),
+  }));
+  const excerptYears = [...new Set([1, 3, 5, 10, 15, 20, 25, 30, p.simYears])]
+    .filter((y) => y <= p.simYears).sort((a, b) => a - b);
+  const dt = new Date().toLocaleDateString("ja-JP");
+  const vconf = { ok: ["健全", T.good], warn: ["要注意", "#B07A1A"], danger: ["危険", T.real] }[diag.level];
+  const gross = ((p.rent * 12) / (p.price * 10000)) * 100;
+  const loan = Math.max(p.price - p.downPayment, 0);
+
+  const rowsL = [
+    ["物件価格", p.price.toLocaleString() + " 万円"],
+    ["購入諸費用率", p.costsPct + " %"],
+    ["表面利回り", gross.toFixed(2) + " %"],
+    ["月額家賃(初年度)", p.rent.toLocaleString() + " 円"],
+    ["家賃下落率", p.rentDecline + " %/年"],
+    ["平均入居期間 / 空室期間", p.stayYears + "年 / " + p.vacancyMonths + "ヶ月"],
+    ["原状回復費(退去毎)", p.restorationCost.toLocaleString() + " 円"],
+    ["募集広告料(AD)", p.adMonths + " ヶ月分"],
+  ];
+  const rowsR = [
+    ["自己資金 / 借入", p.downPayment.toLocaleString() + "万円 / " + loan.toLocaleString() + "万円"],
+    ["返済期間 / 方式", p.loanYears + "年 / " + (p.repayMethod === "annuity" ? "元利均等" : "元金均等")],
+    ["金利(当初+上昇)", p.rate0 + "% +" + p.rateSlope + "pt/年 (上限" + p.rateCap + "%)"],
+    ["管理委託 / 建物管理費", p.mgmtPct + "% / 月" + p.bldgFee.toLocaleString() + "円"],
+    ["経常修繕費(初年度)", p.repairBase.toLocaleString() + " 円/年"],
+    ["税の考慮", p.taxOn ? "限界税率" + p.taxRate + "%(損益通算" + (p.lossOffset ? "あり" : "なし") + ")" : "税引前"],
+    ["売却想定", p.saleMode === "yield" ? "売却時利回り " + p.exitYieldPct + "%" : "価格変動 " + p.priceTrendPct + "%/年"],
+    ["分析期間", p.simYears + " 年"],
+  ];
+  const TOTAL = 7;
+
+  return (
+    <div className="rp-overlay">
+      <style>{REPORT_CSS}</style>
+      <div className="rp-bar">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="レポートのタイトル" />
+        <button style={{ background: T.real, color: "#fff" }} onClick={() => window.print()}>
+          印刷 / PDFとして保存</button>
+        <button style={{ background: "#fff", color: T.ink }} onClick={onClose}>閉じる</button>
+        <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)" }}>
+          印刷ダイアログで「PDFに保存」・用紙A4・横向き・余白なしを選択してください</span>
+      </div>
+
+      {/* 1. 表紙 */}
+      <div className="sheet">
+        <div className="brand">現実派 ｜ REAL ESTATE REALITY REPORT</div>
+        <h1>{title}</h1>
+        <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 分析期間: {p.simYears}年(月次計算)</div>
+        <div style={{ marginTop: 40 }}>
+          <span className="verdict-badge" style={{ background: vconf[1] + "18", color: vconf[1], border: "2px solid " + vconf[1] }}>
+            <span style={{ width: 14, height: 14, borderRadius: 7, background: vconf[1], display: "inline-block" }} />
+            総合診断: {vconf[0]}
+          </span>
+        </div>
+        <div className="kpi3">
+          <div><div className="l">最終損益(売却込み・{p.simYears}年)</div>
+            <div className="v" style={{ color: m.total < 0 ? T.real : T.good }}>{fmtMan(m.total)}</div></div>
+          <div><div className="l">IRR(内部収益率)</div>
+            <div className="v">{m.irr == null ? "—" : m.irr.toFixed(1) + "%"}</div></div>
+          <div><div className="l">DSCR(初年度返済余裕率)</div>
+            <div className="v" style={{ color: m.dscr != null && m.dscr < 1.2 ? T.real : T.ink }}>
+              {m.dscr == null ? "—" : m.dscr.toFixed(2)}</div></div>
+        </div>
+        <p className="para" style={{ maxWidth: 900 }}>{n.overall}</p>
+        <SheetFoot page={1} total={TOTAL} title={title} />
+      </div>
+
+      {/* 2. 前提条件 */}
+      <div className="sheet">
+        <h2>1. 分析の前提条件</h2>
+        <div style={{ display: "flex", gap: 36 }}>
+          <table className="pt" style={{ flex: 1 }}><tbody>
+            {rowsL.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table>
+          <table className="pt" style={{ flex: 1 }}><tbody>
+            {rowsR.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table>
+        </div>
+        <h3 style={{ marginTop: 26 }}>資金計画の評価</h3>
+        <p className="para">{n.funding} {n.payback}</p>
+        <SheetFoot page={2} total={TOTAL} title={title} />
+      </div>
+
+      {/* 3. 累積キャッシュフロー */}
+      <div className="sheet">
+        <h2>2. 累積キャッシュフロー — 楽観シナリオとの比較(万円)</h2>
+        <ComposedChart width={1010} height={430} data={chartData}
+          margin={{ top: 10, right: 20, left: 0, bottom: 4 }}>
+          <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
+          <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
+          <YAxis tick={{ fontSize: 12 }} width={64} />
+          <Legend wrapperStyle={{ fontSize: 13 }} />
+          <ReferenceLine y={0} stroke="#16222E" />
+          <Line type="monotone" dataKey="楽観" stroke={T.opt} strokeWidth={2.5} strokeDasharray="7 5" dot={false} />
+          <Line type="monotone" dataKey="現実" stroke={T.real} strokeWidth={3} dot={false} />
+        </ComposedChart>
+        <p className="para" style={{ marginTop: 10 }}>{n.trajectory}</p>
+        <SheetFoot page={3} total={TOTAL} title={title} />
+      </div>
+
+      {/* 4. 単年CFと年次明細 */}
+      <div className="sheet">
+        <h2>3. 単年キャッシュフローと年次明細(抜粋)</h2>
+        <ComposedChart width={1010} height={300} data={chartData}
+          margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
+          <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
+          <YAxis yAxisId="cf" tick={{ fontSize: 12 }} width={56} />
+          <YAxis yAxisId="bal" orientation="right" tick={{ fontSize: 12 }} width={64} />
+          <Legend wrapperStyle={{ fontSize: 13 }} />
+          <ReferenceLine yAxisId="cf" y={0} stroke="#16222E" />
+          <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
+            {chartData.map((d, i) => <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.navy} />)}
+          </Bar>
+          <Line yAxisId="bal" type="monotone" dataKey="残債" stroke={T.sub} strokeWidth={2} dot={false} />
+        </ComposedChart>
+        <table className="dt" style={{ marginTop: 16 }}>
+          <thead><tr>{["年", "収入", "経費", "返済", "単年CF", "累積CF", "残債"].map((h) =>
+            <th key={h}>{h}</th>)}</tr></thead>
+          <tbody>
+            {excerptYears.map((y) => { const r = m.real[y - 1]; return (
+              <tr key={y}>
+                <td>{y}年目</td><td>{fmtMan(r.income)}</td><td>{fmtMan(r.expense)}</td>
+                <td>{fmtMan(r.loanPaid)}</td>
+                <td style={{ color: r.cf < 0 ? T.real : T.ink, fontWeight: 700 }}>{fmtMan(r.cf)}</td>
+                <td>{fmtMan(r.cum)}</td><td>{fmtMan(r.balance)}</td>
+              </tr>); })}
+          </tbody>
+        </table>
+        <SheetFoot page={4} total={TOTAL} title={title} />
+      </div>
+
+      {/* 5. リスク分析 */}
+      <div className="sheet">
+        <h2>4. リスク分析 — 検出されたシグナルと前提の点検</h2>
+        {diag.dangers.length === 0 && diag.warns.length === 0 && (
+          <p className="para">本試算の前提において、重大な危険シグナルは検出されていない。</p>)}
+        {diag.dangers.map((d, i) => (
+          <div key={"d" + i} className="flagline" style={{ color: T.real }}>⛔ {d}</div>))}
+        {diag.warns.map((d, i) => (
+          <div key={"w" + i} className="flagline" style={{ color: "#8A5A12" }}>⚠ {d}</div>))}
+        {diag.optimistic.length > 0 && (<>
+          <h3 style={{ marginTop: 22 }}>前提の点検(楽観側に寄っている可能性のある入力)</h3>
+          {diag.optimistic.map((d, i) => (
+            <div key={"o" + i} className="flagline" style={{ color: "#5B6B7A" }}>・{d}</div>))}
+        </>)}
+        <h3 style={{ marginTop: 22 }}>ストレステスト — 悪条件の複合に対する耐久性</h3>
+        <div style={{ display: "flex", gap: 14 }}>
+          {stress.map((s) => (
+            <div key={s.name} style={{ flex: 1, border: "1px solid " + (s.m.total >= 0 ? "#E2E8EF" : T.real),
+              borderRadius: 12, padding: "13px 16px",
+              background: s.m.total >= 0 ? "#FBFCFD" : "rgba(179,64,46,.05)" }}>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>{s.name}</div>
+              <div style={{ fontSize: 13, marginTop: 6, lineHeight: 1.9 }} className="num">
+                最終損益: <b style={{ color: s.m.total < 0 ? T.real : T.good }}>{fmtMan(s.m.total)}</b><br />
+                IRR: <b>{s.m.irr == null ? "—" : s.m.irr.toFixed(1) + "%"}</b> ／
+                初赤字: <b>{s.m.firstDeficitYear ? s.m.firstDeficitYear + "年目" : "なし"}</b>
+              </div>
+              <div style={{ marginTop: 6, fontSize: 13, fontWeight: 800,
+                color: s.m.total >= 0 ? T.good : T.real }}>
+                {s.m.total >= 0 ? "✓ 耐える" : "✗ 損失で終わる"}</div>
+            </div>))}
+        </div>
+        <SheetFoot page={5} total={TOTAL} title={title} />
+      </div>
+
+      {/* 6. 出口戦略 */}
+      <div className="sheet">
+        <h2>5. 出口戦略 — 売却タイミングの最適化(万円)</h2>
+        <ComposedChart width={1010} height={400} data={exit}
+          margin={{ top: 22, right: 20, left: 0, bottom: 4 }}>
+          <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
+          <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
+          <YAxis tick={{ fontSize: 12 }} width={64} />
+          <ReferenceLine y={0} stroke="#16222E" />
+          <Line type="monotone" dataKey="総合損益" stroke={T.navy} strokeWidth={3} dot={false} />
+          {n.bestExit && <ReferenceLine x={n.bestExit.year} stroke={T.good} strokeDasharray="5 4"
+            label={{ value: "最適: " + n.bestExit.year + "年目", fontSize: 13, fill: T.good, position: "top" }} />}
+        </ComposedChart>
+        <p className="para" style={{ marginTop: 10 }}>{n.exit}</p>
+        <SheetFoot page={6} total={TOTAL} title={title} />
+      </div>
+
+      {/* 7. 計算方法・免責 */}
+      <div className="sheet">
+        <h2>6. 計算方法と免責事項</h2>
+        <h3>計算方法の概要</h3>
+        <p className="para">
+          本レポートの試算は、分析期間{p.simYears}年を月次({p.simYears * 12}ヶ月)に分解した逐次計算による。
+          各月において賃料収入(経年下落・更新料・礼金を含む)、運営経費(管理費・税・保険・修繕)、
+          借入返済(金利の年次上昇を反映した再計算)を計上し、入退去サイクルに応じて空室損・原状回復費・
+          募集広告料を、設備の交換周期に応じて資本的支出を反映している。
+          税額は建物部分の減価償却と支払利息を控除した不動産所得に対する限界税率による簡易計算であり、
+          最終損益は「累積キャッシュフロー+売却手取(諸費用・譲渡税・残債控除後)−初期自己資金」として算定した。
+          「楽観シナリオ」は満室・金利固定・家賃一定・退去/設備コストなしの一般的な簡易シミュレーションを再現したものである。
+        </p>
+        <h3 style={{ marginTop: 20 }}>免責事項</h3>
+        <p className="para">{REPORT_DISCLAIMER}</p>
+        <SheetFoot page={7} total={TOTAL} title={title} />
+      </div>
+    </div>
+  );
+}
+
+// ---------- 比較レポート ----------
+function CompareReportView({ rows, onClose }) {
+  const dt = new Date().toLocaleDateString("ja-JP");
+  const pct = (v, d = 1) => (v == null || !isFinite(v) ? "—" : v.toFixed(d) + "%");
+  const bestI = rows.reduce((a, b) => ((b.m.irr ?? -1e9) > (a.m.irr ?? -1e9) ? b : a), rows[0]);
+  const bestD = rows.reduce((a, b) => ((b.m.dscr ?? -1e9) > (a.m.dscr ?? -1e9) ? b : a), rows[0]);
+  const rec =
+    `IRR(投資効率)基準では「${bestI.pr.name}」(${bestI.m.irr == null ? "—" : bestI.m.irr.toFixed(1) + "%"})が最も優位であり、` +
+    `DSCR(返済余裕)基準では「${bestD.pr.name}」(${bestD.m.dscr == null ? "—" : bestD.m.dscr.toFixed(2)})が最も安全性が高い。` +
+    (bestI.pr.id === bestD.pr.id
+      ? "両基準で同一物件が優位であり、比較対象の中では有力候補と評価できる。"
+      : "効率と安全性で優位な物件が分かれるため、投資方針(拡大重視か安定重視か)に応じた選択が求められる。");
+  const cautions = rows.filter((r) => r.m.dscr != null && r.m.dscr < 1.1)
+    .map((r) => `「${r.pr.name}」はDSCR ${r.m.dscr.toFixed(2)}と返済余裕が乏しく、融資審査・運営の両面で注意を要する。`);
+  const barData = rows.map((r) => ({
+    name: r.pr.name.length > 9 ? r.pr.name.slice(0, 9) + "…" : r.pr.name,
+    総合損益: Math.round(r.m.total / 10000),
+    IRR: r.m.irr == null ? 0 : +r.m.irr.toFixed(1),
+  }));
+  const TOTAL = 3;
+  const title = "物件比較レポート(" + rows.length + "件)";
+  return (
+    <div className="rp-overlay">
+      <style>{REPORT_CSS}</style>
+      <div className="rp-bar">
+        <button style={{ background: T.real, color: "#fff" }} onClick={() => window.print()}>
+          印刷 / PDFとして保存</button>
+        <button style={{ background: "#fff", color: T.ink }} onClick={onClose}>閉じる</button>
+        <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)" }}>
+          印刷ダイアログで「PDFに保存」・用紙A4・横向き・余白なしを選択してください</span>
+      </div>
+
+      <div className="sheet">
+        <div className="brand">現実派 ｜ REAL ESTATE REALITY REPORT</div>
+        <h1>{title}</h1>
+        <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 現実シナリオ(売却込み)ベースの比較</div>
+        <h3 style={{ marginTop: 34 }}>比較対象</h3>
+        {rows.map((r, i) => (
+          <div key={r.pr.id} style={{ fontSize: 15, padding: "8px 0", borderBottom: "1px dashed #E2E8EF" }}>
+            {i + 1}. <b>{r.pr.name}</b>
+            <span style={{ color: "#5B6B7A", fontSize: 13 }}>
+              (価格 {r.pr.params.price.toLocaleString()}万円 ／ 保存日 {r.pr.savedAt.slice(0, 10)})</span>
+          </div>))}
+        <SheetFoot page={1} total={TOTAL} title={title} />
+      </div>
+
+      <div className="sheet">
+        <h2>1. 指標の横並び比較</h2>
+        <table className="dt">
+          <thead><tr>{["物件名", "価格", "表面", "IRR", "CCR", "DSCR", "初赤字", "累積CF", "最終損益"].map((h) =>
+            <th key={h}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.map(({ pr, m }) => {
+              const gross = (pr.params.rent * 12) / (pr.params.price * 10000) * 100;
+              return (
+                <tr key={pr.id} style={{ background: pr.id === bestI.pr.id ? "rgba(46,125,110,.07)" : "transparent" }}>
+                  <td>{pr.id === bestI.pr.id ? "★ " : ""}{pr.name}</td>
+                  <td>{pr.params.price.toLocaleString()}万</td>
+                  <td>{pct(gross, 2)}</td>
+                  <td style={{ fontWeight: 700 }}>{pct(m.irr)}</td>
+                  <td>{pct(m.ccr)}</td>
+                  <td style={{ color: m.dscr != null && m.dscr < 1.2 ? T.real : T.ink }}>
+                    {m.dscr == null ? "—" : m.dscr.toFixed(2)}</td>
+                  <td>{m.firstDeficitYear ? m.firstDeficitYear + "年目" : "なし"}</td>
+                  <td>{fmtMan(m.cumFinal)}</td>
+                  <td style={{ fontWeight: 700, color: m.total < 0 ? T.real : T.good }}>{fmtMan(m.total)}</td>
+                </tr>);
+            })}
+          </tbody>
+        </table>
+        <h3 style={{ marginTop: 24 }}>総評</h3>
+        <p className="para">{rec}</p>
+        {cautions.map((c, i) => (
+          <div key={i} className="flagline" style={{ color: T.real }}>⚠ {c}</div>))}
+        <SheetFoot page={2} total={TOTAL} title={title} />
+      </div>
+
+      <div className="sheet">
+        <h2>2. 最終損益とIRRの比較</h2>
+        <div style={{ display: "flex", gap: 24 }}>
+          <div>
+            <h3>最終損益(売却込み・万円)</h3>
+            <ComposedChart width={492} height={380} data={barData}
+              margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
+              <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-18} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 12 }} width={64} />
+              <ReferenceLine y={0} stroke="#16222E" />
+              <Bar dataKey="総合損益" radius={[3, 3, 0, 0]}>
+                {barData.map((d, i) => <Cell key={i} fill={d.総合損益 < 0 ? T.real : T.navy} />)}
+              </Bar>
+            </ComposedChart>
+          </div>
+          <div>
+            <h3>IRR(%)</h3>
+            <ComposedChart width={492} height={380} data={barData}
+              margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
+              <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-18} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 12 }} width={48} />
+              <ReferenceLine y={0} stroke="#16222E" />
+              <Bar dataKey="IRR" radius={[3, 3, 0, 0]} fill={T.good} />
+            </ComposedChart>
+          </div>
+        </div>
+        <p className="para" style={{ marginTop: 8, fontSize: 12 }}>{REPORT_DISCLAIMER}</p>
+        <SheetFoot page={3} total={TOTAL} title={title} />
+      </div>
+    </div>
+  );
+}
+
 // ---------- アカウント設定モーダル ----------
 function AccountModal({ open, onClose, user, profile }) {
   const [pw, setPw] = useState("");
@@ -1292,7 +1719,7 @@ function UpgradeModal({ open, onClose, onUnlocked, authed, email, onRefresh }) {
           Proプランで全機能を開放</h3>
         <p style={{ fontSize: 12.5, color: T.sub, margin: "0 0 12px", lineHeight: 1.7 }}>
           詳細モード(全パラメータ) ／ 分析タブ(感度・ストレス・出口) ／ 運用管理 ／
-          AI市場調査 月10回 ／ 物件保存 無制限 ／ IRR・CCR・DSCR比較
+          AI市場調査 月10回 ／ 物件保存 無制限 ／ IRR・CCR・DSCR比較 ／ レポート出力(PDF)
         </p>
 
         {authed !== null ? (
@@ -1408,6 +1835,8 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [cmpReport, setCmpReport] = useState(null); // 比較レポート用の行データ
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [aiTick, setAiTick] = useState(0);
 
@@ -1623,6 +2052,14 @@ export default function App() {
         {authOpen && <AuthModal open onClose={() => setAuthOpen(false)} />}
         {accountOpen && <AccountModal open onClose={() => setAccountOpen(false)}
           user={user} profile={profile} />}
+        {reportOpen && isPro && (
+          <ReportView p={p}
+            initialTitle={(PRESETS.find((x) => x.key === activePreset) || {}).name
+              ? (PRESETS.find((x) => x.key === activePreset).name + " 収支分析レポート")
+              : "検討物件 収支分析レポート"}
+            onClose={() => setReportOpen(false)} />
+        )}
+        {cmpReport && <CompareReportView rows={cmpReport} onClose={() => setCmpReport(null)} />}
 
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {[["sim", "シミュレーション", true], ["cmp", "物件比較", true],
@@ -1822,6 +2259,15 @@ export default function App() {
             ))
           )}
         </section>
+
+        {/* レポート出力 */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button onClick={() => (isPro ? setReportOpen(true) : setUpgradeOpen(true))}
+            style={{ padding: "8px 18px", background: "#FFF", color: T.navy,
+              border: `1.5px solid ${T.navy}`, borderRadius: 8, fontSize: 12.5,
+              fontWeight: 700, cursor: "pointer" }}>
+            📄 レポート出力(PDF){!isPro && " — Pro"}</button>
+        </div>
 
         {/* KPI */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
@@ -2053,6 +2499,7 @@ export default function App() {
         {tab === "cmp" && (
           <CompareTab properties={properties} current={p} plan={plan}
             onUpgrade={() => setUpgradeOpen(true)}
+            onReport={(rows) => setCmpReport(rows)}
             onSave={saveCurrentProperty} onLoad={loadProperty} onDelete={deleteProperty} />
         )}
         {tab === "ana" && isPro && <AnalysisTab p={p} />}

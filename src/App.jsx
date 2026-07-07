@@ -917,9 +917,14 @@ function diagnose(q, m) {
   const payback = real.find((r) => r.cum >= sale.initialEquity);
   const dangers = [], warns = [], optimistic = [];
 
-  // 総合成績:最終損益プラス かつ IRR>=5% を「健全ライン」の下地に置き、
-  // これを満たす場合は単一指標の弱さだけでは「危険」に格上げしないポリシー
-  const goodOverall = m.total > 0 && m.irr != null && m.irr >= 5;
+  // 総合成績:最終損益プラス かつ IRR>=5% かつ「中度ストレスでも黒字」を健全ラインとし、
+  // これを満たす場合のみ単一指標の弱さを「危険」に格上げしないポリシー。
+  // ストレス条件を課すのは、楽観的な入力(家賃上昇前提など)で膨らんだ数字に
+  // 警告緩和が乗っ取られるのを防ぐため
+  const stressed = computeMetrics({ ...q, rate0: q.rate0 + 1,
+    vacancyMonths: q.vacancyMonths * 1.5, rentDecline: q.rentDecline + 0.5,
+    repairInfl: q.repairInfl + 1 });
+  const goodOverall = m.total > 0 && m.irr != null && m.irr >= 5 && stressed.total > 0;
 
   if (monthly1 < 0)
     dangers.push(`初年度から毎月約${Math.round(-monthly1).toLocaleString()}円の持ち出しが発生します`);
@@ -948,7 +953,9 @@ function diagnose(q, m) {
     warns.push(`${m.firstDeficitYear}年目という早期に単年赤字へ転落します。運営初期段階での持ち出しに備える必要があります`);
 
   if (q.vacancyMonths < 1) optimistic.push("空室期間1ヶ月未満は楽観的です(一般に1〜3ヶ月)");
-  if (q.rentDecline < 0.5) optimistic.push("家賃下落率0.5%未満は楽観的です(築古化は避けられません)");
+  if (q.rentDecline < 0)
+    optimistic.push(`家賃が毎年${(-q.rentDecline).toFixed(1)}%上昇し続ける前提です。${q.simYears}年の複利では極めて楽観的な想定で、結果を大きく押し上げています`);
+  else if (q.rentDecline < 0.5) optimistic.push("家賃下落率0.5%未満は楽観的です(築古化は避けられません)");
   if (q.mgmtPct < 3) optimistic.push("管理委託料3%未満は相場(3〜5%)より低い前提です");
   if (q.restorationCost < 50000) optimistic.push("原状回復費5万円未満は単身物件でも楽観的です");
   if (q.rateSlope <= 0) optimistic.push("金利上昇を見込んでいません。変動金利なら上昇シナリオの確認を");
@@ -1061,6 +1068,8 @@ function buildNarrative(p, m, diag, exit, optLast) {
     m.dscr == null ? "借入がなく全額自己資金による取得のため、返済リスクは存在しない。"
     : m.dscr >= 1.3 ? `初年度DSCR(返済余裕率)は${m.dscr.toFixed(2)}であり、金融機関が目安とする1.2〜1.3を上回る。空室や金利上昇に対して一定の緩衝を備えた資金計画である。`
     : m.dscr >= 1.1 ? `初年度DSCRは${m.dscr.toFixed(2)}と、金融機関の目安である1.2〜1.3をやや下回る。自己資金の積み増しや融資条件の改善により、返済余裕を厚くすることが望ましい。`
+    : (m.total > 0 && m.irr != null && m.irr >= 5)
+    ? `初年度DSCRは${m.dscr.toFixed(2)}と低位で返済余裕は乏しいものの、総合収益性(IRR ${m.irr.toFixed(1)}%)は高く、レバレッジを効かせた設計といえる。安全性を優先する場合は、自己資金の積み増しによりDSCR 1.2以上を確保する選択肢も検討に値する。`
     : `初年度DSCRは${m.dscr.toFixed(2)}にとどまり、返済余裕がほとんどない。わずかな空室や金利上昇で持ち出しに転じる構造であり、資金計画の抜本的な見直しが必要である。`;
   n.trajectory =
     (m.firstDeficitYear

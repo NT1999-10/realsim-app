@@ -917,22 +917,35 @@ function diagnose(q, m) {
   const payback = real.find((r) => r.cum >= sale.initialEquity);
   const dangers = [], warns = [], optimistic = [];
 
+  // 総合成績:最終損益プラス かつ IRR>=5% を「健全ライン」の下地に置き、
+  // これを満たす場合は単一指標の弱さだけでは「危険」に格上げしないポリシー
+  const goodOverall = m.total > 0 && m.irr != null && m.irr >= 5;
+
   if (monthly1 < 0)
     dangers.push(`初年度から毎月約${Math.round(-monthly1).toLocaleString()}円の持ち出しが発生します`);
   if (m.dscr != null) {
-    if (m.dscr < 1.1) dangers.push(`DSCR ${m.dscr.toFixed(2)} — 返済余裕がほぼなく、金融機関の融資基準(目安1.2以上)を下回ります`);
-    else if (m.dscr < 1.3) warns.push(`DSCR ${m.dscr.toFixed(2)} — 返済余裕が薄め。空室や金利上昇への耐性が限られます`);
+    if (m.dscr < 1.1) {
+      // DSCR低位でも総合成績が良い物件は「注意喚起」に留める
+      if (goodOverall)
+        warns.push(`初年度DSCR ${m.dscr.toFixed(2)} — 返済余裕は薄いものの、総合損益・IRRは良好。頭金の積み増しで安全性を高める余地があります`);
+      else
+        dangers.push(`初年度DSCR ${m.dscr.toFixed(2)} — 返済余裕がほぼなく、金融機関の融資基準(目安1.2以上)を下回ります`);
+    } else if (m.dscr < 1.3) {
+      warns.push(`初年度DSCR ${m.dscr.toFixed(2)} — 返済余裕が薄め。空室や金利上昇への耐性が限られます`);
+    }
   }
-  if (q.downPayment < q.price * 0.1 && gross < 5)
-    dangers.push(`ほぼフルローン × 表面利回り${gross.toFixed(1)}% — 新築ワンルーム商法でよく見る危険な組み合わせです`);
+  if (q.downPayment < q.price * 0.1 && gross < 5 && !goodOverall)
+    dangers.push(`ほぼフルローン × 表面利回り${gross.toFixed(1)}% — 収支が構造的に苦しい組み合わせです`);
   if (m.total < 0)
     dangers.push(`${q.simYears}年保有して売却しても約${fmtMan(-m.total)}の損失で終わる試算です`);
   if (m.irr != null && m.irr < 0)
     dangers.push("IRRがマイナス — 自己資金を投じる経済合理性がありません");
   else if (m.irr != null && m.irr < 2)
     warns.push(`IRR ${m.irr.toFixed(1)}% — インデックス投資等と比べ、手間とリスクに見合わない水準かもしれません`);
-  if (m.firstDeficitYear && m.firstDeficitYear <= 10 && monthly1 >= 0)
-    warns.push(`${m.firstDeficitYear}年目に単年赤字へ転落します。修繕増・金利上昇・家賃下落の複合が原因です`);
+  // 初赤字転換は「早期(5年目以内)」かつ「総合成績も振るわない」ときのみ注意喚起
+  // 長期投資では後半に単年赤字が混じるのは通常であり、それだけで警告するのは過剰
+  if (m.firstDeficitYear && m.firstDeficitYear <= 5 && monthly1 >= 0 && !goodOverall)
+    warns.push(`${m.firstDeficitYear}年目という早期に単年赤字へ転落します。運営初期段階での持ち出しに備える必要があります`);
 
   if (q.vacancyMonths < 1) optimistic.push("空室期間1ヶ月未満は楽観的です(一般に1〜3ヶ月)");
   if (q.rentDecline < 0.5) optimistic.push("家賃下落率0.5%未満は楽観的です(築古化は避けられません)");
@@ -947,9 +960,10 @@ function diagnose(q, m) {
 
   const summary = [];
   summary.push(`${q.simYears}年間保有して売却した場合、自己資金約${fmtMan(sale.initialEquity)}に対し最終損益は約${fmtMan(Math.abs(m.total))}の${m.total >= 0 ? "プラス" : "マイナス"}です${m.irr != null ? `(IRR ${m.irr.toFixed(1)}%)` : ""}。`);
-  if (m.firstDeficitYear)
-    summary.push(`${m.firstDeficitYear}年目に単年収支が赤字化し、最悪期には月あたり約${Math.round(Math.max(0, -worst)).toLocaleString()}円の持ち出しが見込まれます。`);
-  else summary.push("保有期間を通じて単年黒字を維持する試算です。");
+  if (m.firstDeficitYear) {
+    const isLate = m.firstDeficitYear > 15;
+    summary.push(`${m.firstDeficitYear}年目に単年収支が赤字化${isLate ? "しますが、これは金利上昇と家賃下落が積み重なる長期投資では通常の推移です" : "し、最悪期には月あたり約" + Math.round(Math.max(0, -worst)).toLocaleString() + "円の持ち出しが見込まれます"}。`);
+  } else summary.push("保有期間を通じて単年黒字を維持する試算です。");
   summary.push(payback
     ? `投下した自己資金は家賃収入だけで${payback.year}年目に回収できます。`
     : "家賃収入だけでは自己資金を回収できず、売却益頼みの構造です。");

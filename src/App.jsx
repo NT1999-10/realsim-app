@@ -8,11 +8,14 @@ import { supabase, authEnabled } from "./auth.js";
 
 // ---------- design tokens ----------
 const T = {
-  bg: "#EDF0F3", card: "#FFFFFF", ink: "#16222E", sub: "#5B6B7A",
-  line: "#D7DDE3", navy: "#1F3A52",
-  real: "#B3402E", realSoft: "rgba(179,64,46,0.10)", opt: "#7FA6B8",
-  good: "#2E7D6E", warnBg: "#FBF3E6", warnInk: "#8A5A12",
-  aiBg: "#EEF4F2", aiInk: "#1E5C50",
+  bg: "transparent", // 背景はindex.htmlのグラデーション+ドットグリッド
+  card: "#FFFFFF", ink: "#10202E", sub: "#5A6B7B",
+  line: "#E2E8EF", navy: "#1F3A52",
+  blue: "#2D7DD2", teal: "#2BB8A3",
+  grad: "linear-gradient(120deg,#2D7DD2,#2BB8A3)",
+  real: "#D14B32", realSoft: "rgba(209,75,50,0.10)", opt: "#9DB6C8",
+  good: "#1F8A72", warnBg: "#FBF3E6", warnInk: "#8A5A12",
+  aiBg: "rgba(43,184,163,0.08)", aiInk: "#137A68",
 };
 
 const fmtMan = (yen) => {
@@ -260,11 +263,11 @@ function Select({ label, value, onChange, options }) {
 function Section({ no, title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section style={{ background: T.card, borderRadius: 10, padding: 16,
+    <section style={{ background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
       border: `1px solid ${T.line}`, marginBottom: 12 }}>
       <h2 onClick={() => setOpen(!open)} style={{
         fontSize: 13, fontWeight: 700, color: T.navy, margin: 0,
-        letterSpacing: "0.06em", borderBottom: open ? `2px solid ${T.navy}` : "none",
+        letterSpacing: "0.06em", borderBottom: open ? `3px solid ${T.blue}` : "none",
         paddingBottom: open ? 6 : 0, marginBottom: open ? 12 : 0,
         display: "flex", justifyContent: "space-between", cursor: "pointer" }}>
         <span>{title}</span>
@@ -278,7 +281,7 @@ function Section({ no, title, children, defaultOpen = true }) {
 
 function Kpi({ label, value, color, sub }) {
   return (
-    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 10,
+    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
       padding: "12px 14px", flex: "1 1 145px" }}>
       <div style={{ fontSize: 11, color: T.sub, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 19, fontWeight: 700, color: color || T.ink,
@@ -390,10 +393,10 @@ async function fetchMarketData(area, ptype, token) {
 }
 
 // ---------- タブ: 物件比較 ----------
-const cardSt = { background: T.card, borderRadius: 10, padding: 16,
+const cardSt = { background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
   border: `1px solid ${T.line}`, marginBottom: 12 };
 const h2St = { fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
-  letterSpacing: "0.06em", borderBottom: `2px solid ${T.navy}`, paddingBottom: 6 };
+  letterSpacing: "0.06em", borderBottom: `3px solid ${T.blue}`, paddingBottom: 6 };
 const btnSt = (bg) => ({ padding: "8px 16px", background: bg, color: "#FFF",
   border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer" });
 
@@ -448,7 +451,7 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%",
               fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
               <thead>
-                <tr style={{ borderBottom: `2px solid ${T.navy}`, color: T.navy }}>
+                <tr style={{ borderBottom: `3px solid ${T.blue}`, color: T.navy }}>
                   {["物件名", "価格", "表面", "IRR", "CCR", "DSCR", "初赤字", "累積CF", "総合損益", "保存日", ""].map((h) => (
                     <th key={h} style={{ ...cell, textAlign: h === "物件名" ? "left" : "right" }}>{h}</th>
                   ))}
@@ -586,7 +589,7 @@ function AnalysisTab({ p }) {
               [`${pr.payload.loV.toLocaleString()} 〜 ${pr.payload.hiV.toLocaleString()}万円`, "総合損益の振れ幅"]}
               labelStyle={{ fontSize: 12 }} />
             <Bar dataKey="offset" stackId="t" fill="transparent" legendType="none" tooltipType="none" />
-            <Bar dataKey="span" stackId="t" fill={T.navy} radius={[0, 3, 3, 0]} barSize={16} />
+            <Bar dataKey="span" stackId="t" fill={T.blue} radius={[0, 3, 3, 0]} barSize={16} />
             <ReferenceLine x={base.total / 10000 + sens.shift} stroke={T.real} strokeWidth={2}
               label={{ value: "現状", fontSize: 11, fill: T.real, position: "top" }} />
           </ComposedChart>
@@ -605,7 +608,7 @@ function AnalysisTab({ p }) {
             <YAxis tick={{ fontSize: 11, fill: T.sub }} width={56} />
             <Tooltip formatter={(v) => v.toLocaleString() + "万円"} labelFormatter={(l) => l + "年目に売却した場合"} />
             <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
-            <Line type="monotone" dataKey="総合損益" stroke={T.navy} strokeWidth={2.5} dot={false} />
+            <Line type="monotone" dataKey="総合損益" stroke={T.blue} strokeWidth={2.5} dot={false} />
             {bestExit && (
               <ReferenceLine x={bestExit.year} stroke={T.good} strokeDasharray="4 3"
                 label={{ value: `最適: ${bestExit.year}年目 ${bestExit.総合損益.toLocaleString()}万`,
@@ -789,7 +792,7 @@ function OpsTab({ p, setP, actuals, persist }) {
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%",
               fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
               <thead>
-                <tr style={{ borderBottom: `2px solid ${T.navy}`, color: T.navy }}>
+                <tr style={{ borderBottom: `3px solid ${T.blue}`, color: T.navy }}>
                   {["年月", "区分", "科目", "金額", "メモ", ""].map((h) => (
                     <th key={h} style={{ ...cell, textAlign: "left" }}>{h}</th>))}
                 </tr>
@@ -842,7 +845,7 @@ function OpsTab({ p, setP, actuals, persist }) {
                     </tr>
                   );
                 })}
-                <tr style={{ borderTop: `2px solid ${T.navy}` }}>
+                <tr style={{ borderTop: `3px solid ${T.blue}` }}>
                   <td colSpan={2} style={{ padding: "8px 9px", fontWeight: 700 }}>差引(収入−支出)</td>
                   <td style={{ ...cell, fontWeight: 700,
                     color: sums.inc - sums.exp < 0 ? T.real : T.good }}>
@@ -1227,7 +1230,7 @@ function ReportView({ p, initialTitle, onClose }) {
           <Legend wrapperStyle={{ fontSize: 13 }} />
           <ReferenceLine yAxisId="cf" y={0} stroke="#16222E" />
           <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
-            {chartData.map((d, i) => <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.navy} />)}
+            {chartData.map((d, i) => <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.blue} />)}
           </Bar>
           <Line yAxisId="bal" type="monotone" dataKey="残債" stroke={T.sub} strokeWidth={2} dot={false} />
         </ComposedChart>
@@ -1290,7 +1293,7 @@ function ReportView({ p, initialTitle, onClose }) {
           <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
           <YAxis tick={{ fontSize: 12 }} width={64} />
           <ReferenceLine y={0} stroke="#16222E" />
-          <Line type="monotone" dataKey="総合損益" stroke={T.navy} strokeWidth={3} dot={false} />
+          <Line type="monotone" dataKey="総合損益" stroke={T.blue} strokeWidth={3} dot={false} />
           {n.bestExit && <ReferenceLine x={n.bestExit.year} stroke={T.good} strokeDasharray="5 4"
             label={{ value: "最適: " + n.bestExit.year + "年目", fontSize: 13, fill: T.good, position: "top" }} />}
         </ComposedChart>
@@ -1408,7 +1411,7 @@ function CompareReportView({ rows, onClose }) {
               <YAxis tick={{ fontSize: 12 }} width={64} />
               <ReferenceLine y={0} stroke="#16222E" />
               <Bar dataKey="総合損益" radius={[3, 3, 0, 0]}>
-                {barData.map((d, i) => <Cell key={i} fill={d.総合損益 < 0 ? T.real : T.navy} />)}
+                {barData.map((d, i) => <Cell key={i} fill={d.総合損益 < 0 ? T.real : T.blue} />)}
               </Bar>
             </ComposedChart>
           </div>
@@ -2023,16 +2026,21 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.ink,
-      fontFamily: '"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif',
+      fontFamily: '"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif',
       padding: "16px 12px 40px" }}>
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
 
         <header style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.18em", color: T.real, fontWeight: 700 }}>
-            悲観こそ事業計画の友
+          <div style={{ fontSize: 11.5, letterSpacing: "0.22em", fontWeight: 900,
+            background: T.grad, WebkitBackgroundClip: "text", backgroundClip: "text",
+            color: "transparent", display: "inline-block" }}>
+            現実を、味方につける。
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "4px 0 2px", color: T.navy }}>
-            現実派 不動産収支シミュレーター v4
+          <h1 style={{ fontSize: 27, fontWeight: 800, margin: "4px 0 2px", color: T.ink,
+            fontFamily: '"Shippori Mincho",serif', letterSpacing: "0.02em" }}>
+            現実<span style={{ color: T.real }}>派</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: T.sub, marginLeft: 10,
+              fontFamily: '"Zen Kaku Gothic New",sans-serif' }}>不動産収支シミュレーター</span>
           </h1>
           <p style={{ fontSize: 12.5, color: T.sub, margin: 0, lineHeight: 1.6 }}>
             取得検討から運用・申告まで。AIによる地域市場データの自動反映に対応。
@@ -2050,12 +2058,12 @@ export default function App() {
                       color: T.sub, textDecoration: "underline", cursor: "pointer",
                       fontSize: 11, padding: 0 }}>ログアウト</button></span>
               : <button onClick={() => setAuthOpen(true)}
-                  style={{ padding: "4px 14px", background: T.navy, color: "#FFF",
+                  style={{ padding: "4px 14px", background: T.grad, color: "#FFF",
                     border: "none", borderRadius: 12, fontSize: 11, fontWeight: 700,
                     cursor: "pointer" }}>ログイン / 新規登録</button>)}
             <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 14px",
               borderRadius: 12, border: `1px solid ${T.navy}`,
-              background: isPro ? T.navy : "#FFF",
+              background: isPro ? T.grad : "#FFF",
               color: isPro ? "#FFF" : T.navy }}>{PLANS[plan].label}プラン</span>
             {isPro
               ? <span style={{ fontSize: 11, color: T.sub }}>AI市場調査 今月あと{quotaLeft}回</span>
@@ -2091,8 +2099,9 @@ export default function App() {
             <button key={k} onClick={() => (ok ? setTab(k) : setUpgradeOpen(true))} style={{
               padding: "8px 16px", borderRadius: 18, fontSize: 13, fontWeight: 700,
               cursor: "pointer",
-              border: `1px solid ${tab === k ? T.navy : T.line}`,
-              background: tab === k ? T.navy : T.card,
+              border: tab === k ? "1px solid transparent" : `1px solid ${T.line}`,
+              background: tab === k ? T.grad : T.card,
+              boxShadow: tab === k ? "0 6px 18px rgba(45,125,210,.28)" : "none",
               color: tab === k ? "#FFF" : ok ? T.ink : T.sub }}>{ok ? l : "\uD83D\uDD12 " + l}</button>
           ))}
         </nav>
@@ -2107,7 +2116,7 @@ export default function App() {
             {[["easy", "かんたん"], ["pro", "詳細"]].map(([k, l]) => (
               <button key={k} onClick={() => switchMode(k)} style={{ padding: "7px 18px",
                 fontSize: 12.5, fontWeight: 700, border: "none", cursor: "pointer",
-                background: mode === k ? T.navy : "#FFF",
+                background: mode === k ? T.grad : "#FFF",
                 color: mode === k ? "#FFF" : T.ink }}>{l}</button>
             ))}
           </div>
@@ -2126,8 +2135,8 @@ export default function App() {
             {PRESETS.map((ps) => (
               <button key={ps.key} onClick={() => applyPreset(ps)} style={{
                 textAlign: "left", padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-                border: `1px solid ${activePreset === ps.key ? T.navy : T.line}`,
-                background: activePreset === ps.key ? "rgba(31,58,82,0.07)" : "#FBFCFD" }}>
+                border: `1.5px solid ${activePreset === ps.key ? T.blue : T.line}`,
+                background: activePreset === ps.key ? "rgba(45,125,210,0.07)" : "#FBFCFD" }}>
                 <div style={{ fontSize: 13, fontWeight: 700,
                   color: ps.danger ? T.real : T.ink }}>
                   {ps.danger ? "⚠ " : ""}{ps.name}</div>
@@ -2161,7 +2170,7 @@ export default function App() {
         )}
 
         {/* AI market data */}
-        <section style={{ background: T.aiBg, border: `1px solid #CBDDD8`, borderRadius: 10,
+        <section style={{ background: T.aiBg, border: "1px solid rgba(43,184,163,.35)", borderRadius: 10,
           padding: 16, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.aiInk, margin: "0 0 10px" }}>
             AI市場データ取得(ウェブ検索) — 地域の実勢をパラメータへ自動反映
@@ -2228,7 +2237,7 @@ export default function App() {
         </section>
 
         {/* 保存済みリサーチライブラリ */}
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 10,
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
           padding: 16, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 4px",
             display: "flex", justifyContent: "space-between" }}>
@@ -2314,7 +2323,7 @@ export default function App() {
         </div>
 
         {/* charts */}
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 10,
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
           padding: "14px 8px 4px", marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 8px 8px" }}>
             累積キャッシュフロー — 楽観と現実のギャップ(万円)
@@ -2336,7 +2345,7 @@ export default function App() {
           </ResponsiveContainer>
         </section>
 
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 10,
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
           padding: "14px 8px 4px", marginBottom: 16 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 8px 8px" }}>
             単年キャッシュフロー(現実)とローン残債(万円)
@@ -2352,7 +2361,7 @@ export default function App() {
               <ReferenceLine yAxisId="cf" y={0} stroke={T.ink} strokeWidth={1} />
               <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
                 {chartData.map((d, i) => (
-                  <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.navy} />
+                  <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.blue} />
                 ))}
               </Bar>
               <Line yAxisId="bal" type="monotone" dataKey="残債" stroke={T.sub}
@@ -2364,7 +2373,7 @@ export default function App() {
         {/* 詳細モード限定: 年次明細・全パラメータ */}
         {mode === "pro" && (<>
         {/* yearly table */}
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 10,
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
           padding: 16, marginBottom: 16 }}>
           <h2 onClick={() => setShowTable(!showTable)} style={{ fontSize: 13, fontWeight: 700,
             color: T.navy, margin: 0, cursor: "pointer",
@@ -2376,7 +2385,7 @@ export default function App() {
               <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%",
                 fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                 <thead>
-                  <tr style={{ borderBottom: `2px solid ${T.navy}`, color: T.navy }}>
+                  <tr style={{ borderBottom: `3px solid ${T.blue}`, color: T.navy }}>
                     {["年", "金利", "収入", "経費", "返済", p.taxOn ? "税" : null, "単年CF", "累積CF", "残債"]
                       .filter(Boolean).map((h) => (
                       <th key={h} style={{ padding: "6px 8px", textAlign: "right" }}>{h}</th>
@@ -2462,10 +2471,10 @@ export default function App() {
           <Field label="大規模修繕の費用" value={p.bigRepairCost} onChange={set("bigRepairCost")} unit="万円/回" step={10} min={0} />
         </Section>
 
-        <section style={{ background: T.card, borderRadius: 10, padding: 16,
+        <section style={{ background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
           border: `1px solid ${T.line}`, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
-            letterSpacing: "0.06em", borderBottom: `2px solid ${T.navy}`, paddingBottom: 6,
+            letterSpacing: "0.06em", borderBottom: `3px solid ${T.blue}`, paddingBottom: 6,
             display: "flex", justifyContent: "space-between" }}>
             <span>設備交換サイクル(大家負担)</span><span style={{ color: T.sub, fontWeight: 400 }}>07</span>
           </h2>

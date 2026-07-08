@@ -3,9 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
       *, *::before, *::after { box-sizing: border-box; }
       input, select, button, textarea { font: inherit; }
+      body{
+        margin:0;
+        background:
+          radial-gradient(900px 460px at 85% -6%, rgba(43,184,163,.14), transparent 60%),
+          radial-gradient(1000px 520px at 4% 2%, rgba(45,125,210,.12), transparent 60%),
+          #F7F9FC;
+      }
+      body::before{
+        content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+        background-image:radial-gradient(rgba(31,58,82,.09) 1px, transparent 1px);
+        background-size:26px 26px;
+        -webkit-mask-image:linear-gradient(180deg, rgba(0,0,0,.55), transparent 520px);
+        mask-image:linear-gradient(180deg, rgba(0,0,0,.55), transparent 520px);
+      }
+      #root{position:relative;z-index:1}
     </style>
     <title>現実派 不動産収支シミュレーター v2</title>
   </head>

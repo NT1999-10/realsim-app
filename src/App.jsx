@@ -875,42 +875,6 @@ function OpsTab({ p, setP, actuals, persist }) {
   );
 }
 
-// ---------- プリセットシナリオ ----------
-const PRESETS = [
-  { key: "urban", name: "都心中古区分", desc: "駅近ワンルーム・流動性重視の標準形",
-    patch: { price: 2000, rent: 85000, downPayment: 300, costsPct: 7, bldgRatio: 40, depYears: 27,
-      rentDecline: 1.0, renewalEveryYears: 2, renewalOwnerMonths: 0.5, reikinMonths: 0,
-      stayYears: 4, vacancyMonths: 2, restorationCost: 150000, adMonths: 1,
-      loanYears: 35, rate0: 1.8, rateSlope: 0.05, rateCap: 4.0,
-      mgmtPct: 5, bldgFee: 12000, bldgFeeInfl: 1, tax: 70000, insurance: 15000,
-      repairBase: 30000, repairInfl: 2, bigRepairCycle: 0,
-      exitYieldPct: 7, priceTrendPct: -1, sellCostPct: 4 } },
-  { key: "rural", name: "地方中古戸建て", desc: "高利回り・短期ローン・修繕は全部自分持ち",
-    patch: { price: 600, rent: 55000, downPayment: 300, costsPct: 8, bldgRatio: 50, depYears: 6,
-      rentDecline: 1.5, renewalEveryYears: 2, renewalOwnerMonths: 0, reikinMonths: 0,
-      stayYears: 6, vacancyMonths: 4, restorationCost: 250000, adMonths: 2,
-      loanYears: 15, rate0: 2.5, rateSlope: 0.05, rateCap: 4.5,
-      mgmtPct: 5, bldgFee: 0, bldgFeeInfl: 0, tax: 40000, insurance: 25000,
-      repairBase: 80000, repairInfl: 2, bigRepairCycle: 15, bigRepairCost: 150,
-      exitYieldPct: 13, priceTrendPct: -2, sellCostPct: 5 } },
-  { key: "apart", name: "一棟アパート(木造8戸)", desc: "8戸を1ユニットに集約した近似モデル",
-    patch: { price: 8000, rent: 400000, downPayment: 1600, costsPct: 7, bldgRatio: 60, depYears: 22,
-      rentDecline: 1.2, renewalEveryYears: 2, renewalOwnerMonths: 0.5, reikinMonths: 0.5,
-      stayYears: 4, vacancyMonths: 2, restorationCost: 1200000, adMonths: 1,
-      loanYears: 25, rate0: 2.2, rateSlope: 0.05, rateCap: 4.5,
-      mgmtPct: 5, bldgFee: 0, bldgFeeInfl: 0, tax: 300000, insurance: 80000,
-      repairBase: 300000, repairInfl: 2, bigRepairCycle: 12, bigRepairCost: 400,
-      exitYieldPct: 9, priceTrendPct: -1.5, sellCostPct: 4 } },
-  { key: "shinchiku", name: "新築ワンルーム検証", desc: "業者提案の数字を入れて持ち出しの実態を確認", danger: true,
-    patch: { price: 3200, rent: 95000, downPayment: 10, costsPct: 5, bldgRatio: 60, depYears: 47,
-      rentDecline: 1.5, renewalEveryYears: 2, renewalOwnerMonths: 0, reikinMonths: 0,
-      stayYears: 4, vacancyMonths: 2, restorationCost: 100000, adMonths: 1,
-      loanYears: 35, rate0: 2.0, rateSlope: 0.05, rateCap: 4.5,
-      mgmtPct: 5, bldgFee: 15000, bldgFeeInfl: 1.5, tax: 90000, insurance: 12000,
-      repairBase: 10000, repairInfl: 2, bigRepairCycle: 0,
-      exitYieldPct: 5.5, priceTrendPct: -1.5, sellCostPct: 4 } },
-];
-
 // ---------- 信号機診断 ----------
 function diagnose(q, m) {
   const real = m.real, sale = m.sale;
@@ -1578,6 +1542,34 @@ function AccountModal({ open, onClose, user, profile }) {
   );
 }
 
+// ---------- AI調査値の表示 ----------
+const AI_FIELDS = [
+  ["rentDeclinePct", "家賃変動", (v) => v + "%/年"],
+  ["stayYears", "平均入居", (v) => v + "年"],
+  ["vacancyMonths", "空室期間", (v) => v + "ヶ月"],
+  ["loanRatePct", "ローン金利相場", (v) => v + "%"],
+  ["rateSlopePctPerYear", "金利上昇", (v) => "+" + v + "%pt/年"],
+  ["priceTrendPct", "価格変動", (v) => v + "%/年"],
+  ["exitYieldPct", "期待利回り", (v) => v + "%"],
+  ["mgmtPct", "管理委託料", (v) => v + "%"],
+  ["adMonths", "AD相場", (v) => v + "ヶ月"],
+  ["reikinMonths", "礼金相場", (v) => v + "ヶ月"],
+  ["renewalOwnerMonths", "更新料(貸主)", (v) => v + "ヶ月"],
+  ["restorationCostYen", "原状回復平均", (v) => Number(v).toLocaleString() + "円"],
+  ["repairInflPct", "修繕費上昇", (v) => v + "%/年"],
+];
+function AiValues({ d }) {
+  return (
+    <div style={{ display: "grid", gap: "4px 12px",
+      gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))",
+      fontVariantNumeric: "tabular-nums" }}>
+      {AI_FIELDS.filter(([k]) => typeof d[k] === "number").map(([k, label, f]) => (
+        <span key={k}>{label}: <b>{f(d[k])}</b></span>
+      ))}
+    </div>
+  );
+}
+
 // ---------- 認証モーダル ----------
 function AuthModal({ open, onClose }) {
   const [tab, setTab] = useState("login");
@@ -1854,7 +1846,6 @@ export default function App() {
   // タブ・リサーチ・物件・予実(すべて永続保存)
   const [tab, setTab] = useState("sim");
   const [mode, setMode] = useState("easy"); // かんたん/詳細
-  const [activePreset, setActivePreset] = useState(null);
   // プラン(フリーミアム) + アカウント認証
   const [localPlan, setLocalPlan] = useState(loadPlan()); // 認証未設定時のフォールバック
   const [user, setUser] = useState(null);
@@ -1923,7 +1914,6 @@ export default function App() {
     if (k === "pro" && !isPro) { setUpgradeOpen(true); return; }
     setMode(k); saveKey("ui-mode", k);
   };
-  const applyPreset = (ps) => { setP((s) => ({ ...s, ...ps.patch })); setActivePreset(ps.key); };
 
   const persistActuals = async (next) => { setActuals(next); await saveKey(KEY_ACTUALS, next); };
   const saveCurrentProperty = async (name) => {
@@ -1975,13 +1965,22 @@ export default function App() {
 
   const applyData = (d) => {
     if (!d) return;
+    const num = (v, fb) => (typeof v === "number" && isFinite(v) ? v : fb);
     setP((s) => ({
       ...s,
-      rentDecline: typeof d.rentDeclinePct === "number" ? d.rentDeclinePct : s.rentDecline,
-      stayYears: typeof d.stayYears === "number" ? d.stayYears : s.stayYears,
-      vacancyMonths: typeof d.vacancyMonths === "number" ? d.vacancyMonths : s.vacancyMonths,
-      rateSlope: typeof d.rateSlopePctPerYear === "number" ? d.rateSlopePctPerYear : s.rateSlope,
-      priceTrendPct: typeof d.priceTrendPct === "number" ? d.priceTrendPct : s.priceTrendPct,
+      rentDecline: num(d.rentDeclinePct, s.rentDecline),
+      stayYears: num(d.stayYears, s.stayYears),
+      vacancyMonths: num(d.vacancyMonths, s.vacancyMonths),
+      rate0: num(d.loanRatePct, s.rate0),
+      rateSlope: num(d.rateSlopePctPerYear, s.rateSlope),
+      priceTrendPct: num(d.priceTrendPct, s.priceTrendPct),
+      exitYieldPct: num(d.exitYieldPct, s.exitYieldPct),
+      reikinMonths: num(d.reikinMonths, s.reikinMonths),
+      renewalOwnerMonths: num(d.renewalOwnerMonths, s.renewalOwnerMonths),
+      adMonths: num(d.adMonths, s.adMonths),
+      mgmtPct: num(d.mgmtPct, s.mgmtPct),
+      restorationCost: num(d.restorationCostYen, s.restorationCost),
+      repairInfl: num(d.repairInflPct, s.repairInfl),
     }));
   };
   const applyAi = () => applyData(aiState.data);
@@ -2085,9 +2084,7 @@ export default function App() {
           user={user} profile={profile} />}
         {reportOpen && isPro && (
           <ReportView p={p}
-            initialTitle={(PRESETS.find((x) => x.key === activePreset) || {}).name
-              ? (PRESETS.find((x) => x.key === activePreset).name + " 収支分析レポート")
-              : "検討物件 収支分析レポート"}
+            initialTitle="検討物件 収支分析レポート"
             onClose={() => setReportOpen(false)} />
         )}
         {cmpReport && <CompareReportView rows={cmpReport} onClose={() => setCmpReport(null)} />}
@@ -2122,29 +2119,10 @@ export default function App() {
           </div>
           <span style={{ fontSize: 11, color: T.sub }}>
             {mode === "easy"
-              ? "3項目+プリセット+AI調査だけで診断できます。残りは保守的な値で自動設定済み"
+              ? "3項目+AI市場調査だけで診断できます。残りは保守的な値で自動設定済み"
               : "全パラメータを編集できます"}
           </span>
         </div>
-
-        {/* プリセット */}
-        <section style={cardSt}>
-          <h2 style={h2St}>プリセット — 典型シナリオをワンタップ投入</h2>
-          <div style={{ display: "grid", gap: 8,
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-            {PRESETS.map((ps) => (
-              <button key={ps.key} onClick={() => applyPreset(ps)} style={{
-                textAlign: "left", padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-                border: `1.5px solid ${activePreset === ps.key ? T.blue : T.line}`,
-                background: activePreset === ps.key ? "rgba(45,125,210,0.07)" : "#FBFCFD" }}>
-                <div style={{ fontSize: 13, fontWeight: 700,
-                  color: ps.danger ? T.real : T.ink }}>
-                  {ps.danger ? "⚠ " : ""}{ps.name}</div>
-                <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.5, marginTop: 2 }}>{ps.desc}</div>
-              </button>
-            ))}
-          </div>
-        </section>
 
         {/* 信号機診断 */}
         <DiagnosisCard diag={diag} />
@@ -2163,7 +2141,7 @@ export default function App() {
                 help="物件価格に充当する手元資金。少ないほどレバレッジが効きますが返済余裕(DSCR)が悪化します。別途、価格の約7%の諸費用も現金で必要です。" />
             </div>
             <div style={{ fontSize: 11.5, color: T.sub, marginTop: 10, lineHeight: 1.7 }}>
-              空室・金利・修繕などの前提はプリセットとAI市場調査の値で自動設定されています。
+              空室・金利・修繕などの前提は、保守的な初期値とAI市場調査の値で自動設定されています。
               数字の根拠を確認・変更したくなったら「詳細」モードへ — それが次のステップです。
             </div>
           </section>
@@ -2173,7 +2151,7 @@ export default function App() {
         <section style={{ background: T.aiBg, border: "1px solid rgba(43,184,163,.35)", borderRadius: 10,
           padding: 16, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.aiInk, margin: "0 0 10px" }}>
-            AI市場データ取得(ウェブ検索) — 地域の実勢をパラメータへ自動反映
+            AI市場データ取得(ウェブ検索) — 家賃・金利から礼金/AD/管理料の商習慣、期待利回りまで13項目を自動反映
             <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, padding: "1px 9px",
               borderRadius: 10, background: isPro ? "transparent" : T.real,
               border: isPro ? `1px solid ${T.aiInk}` : "none",
@@ -2217,15 +2195,7 @@ export default function App() {
           {aiState.status === "done" && aiState.data && (
             <div style={{ marginTop: 12, fontSize: 12.5, lineHeight: 1.7, color: T.ink,
               background: "#FFF", borderRadius: 8, padding: 12, border: `1px solid ${T.line}` }}>
-              <div style={{ display: "grid", gap: 4,
-                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                fontVariantNumeric: "tabular-nums", marginBottom: 8 }}>
-                <span>家賃変動: <b>{aiState.data.rentDeclinePct}%/年(下落)</b></span>
-                <span>平均入居: <b>{aiState.data.stayYears}年</b></span>
-                <span>空室期間: <b>{aiState.data.vacancyMonths}ヶ月</b></span>
-                <span>金利上昇: <b>{aiState.data.rateSlopePctPerYear}%pt/年</b></span>
-                <span>物件価格: <b>{aiState.data.priceTrendPct}%/年</b></span>
-              </div>
+              <div style={{ marginBottom: 8 }}><AiValues d={aiState.data} /></div>
               <div style={{ color: T.sub }}>{aiState.data.summary}</div>
               {Array.isArray(aiState.data.sources) && aiState.data.sources.length > 0 && (
                 <div style={{ color: T.sub, marginTop: 4 }}>
@@ -2267,14 +2237,7 @@ export default function App() {
                     リサーチ日時: {fmtDate(rec.fetchedAt)}
                   </div>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px",
-                  fontSize: 12, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
-                  <span>家賃変動 <b>{rec.data.rentDeclinePct}%/年</b></span>
-                  <span>入居 <b>{rec.data.stayYears}年</b></span>
-                  <span>空室 <b>{rec.data.vacancyMonths}ヶ月</b></span>
-                  <span>金利 <b>+{rec.data.rateSlopePctPerYear}%pt/年</b></span>
-                  <span>価格 <b>{rec.data.priceTrendPct}%/年</b></span>
-                </div>
+                <div style={{ fontSize: 12, marginTop: 6 }}><AiValues d={rec.data} /></div>
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button onClick={() => applyRecord(rec)}
                     style={{ padding: "6px 14px", background: appliedId === rec.id ? T.aiInk : T.navy,

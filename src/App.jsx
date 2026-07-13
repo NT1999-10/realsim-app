@@ -345,7 +345,8 @@ async function loadKey(key, fallback) {
   return localLoad(key, fallback);
 }
 
-const SYNCED_KEYS = [KEY_RESEARCH, KEY_PROPS, KEY_ACTUALS, "ui-mode"];
+const KEY_LEADS = "candidate-leads";
+const SYNCED_KEYS = [KEY_RESEARCH, KEY_PROPS, KEY_ACTUALS, KEY_LEADS, "ui-mode"];
 function purgeLocalMirror() {
   try {
     for (const k of SYNCED_KEYS) localStorage.removeItem("rs-" + k);
@@ -1542,6 +1543,591 @@ function AccountModal({ open, onClose, user, profile }) {
   );
 }
 
+// ---------- ホームダッシュボード(日次利用の定着装置) ----------
+// 想定売却手取(諸費用控除後・譲渡税考慮前)を任意時点tで算出
+function valuationNetAt(q, t) {
+  const tt = Math.max(0, Math.min(t, q.simYears));
+  const gross = q.saleMode === "yield"
+    ? (q.rent * Math.pow(1 - q.rentDecline / 100, tt) * 12) / Math.max(0.1, q.exitYieldPct / 100)
+    : q.price * 10000 * Math.pow(1 + q.priceTrendPct / 100, tt);
+  return gross * (1 - q.sellCostPct / 100);
+}
+// ローン残債を任意時点tで線形補間
+function balanceAt(q, real, t) {
+  const loan0 = Math.max(q.price - q.downPayment, 0) * 10000;
+  if (t <= 0) return loan0;
+  const tt = Math.min(t, q.simYears);
+  const y0 = Math.floor(tt);
+  const b0 = y0 === 0 ? loan0 : real[Math.min(y0, real.length) - 1].balance;
+  const b1 = real[Math.min(y0, real.length - 1)].balance;
+  return b0 + (b1 - b0) * (tt - y0);
+}
+// その時点が属する年の計画CF(年額)
+function cfAtYear(real, t) {
+  const idx = Math.min(Math.max(Math.ceil(t + 0.0001), 1), real.length) - 1;
+  return real[idx].cf;
+}
+
+function LockCard({ onUpgrade, label, children }) {
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ filter: "blur(5px)", pointerEvents: "none", userSelect: "none",
+        opacity: 0.65 }}>{children}</div>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: T.navy,
+          background: "rgba(255,255,255,.85)", padding: "6px 16px", borderRadius: 10 }}>
+          🔒 {label}はProプランの機能です</div>
+        <button onClick={onUpgrade} style={{ padding: "9px 22px", background: T.grad,
+          color: "#FFF", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700,
+          cursor: "pointer" }}>Proで開放する</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- 繰上返済・借り換えシミュレーター ----------
+function LoanLab({ p, actuals }) {
+  const real = useMemo(() => simulate(p, true), [p]);
+  const nowY = new Date().getFullYear();
+  const fromP = () => {
+    const elapsed = Math.max(0, Math.min(nowY - actuals.startYear, p.loanYears));
+    return {
+      bal: Math.max(1, Math.round(balanceAt(p, real, elapsed) / 10000)),
+      rate: +Math.min(p.rate0 + p.rateSlope * elapsed, p.rateCap).toFixed(2),
+      years: Math.max(1, p.loanYears - elapsed),
+    };
+  };
+  const init = fromP();
+  const [bal, setBal] = useState(init.bal);
+  const [rate, setRate] = useState(init.rate);
+  const [years, setYears] = useState(init.years);
+  const [amt, setAmt] = useState(100);
+  const [ptype, setPtype] = useState("shorten");
+  const [nRate, setNRate] = useState(Math.max(0.3, +(init.rate - 0.5).toFixed(2)));
+  const [nYears, setNYears] = useState(init.years);
+  const [costMan, setCostMan] = useState(Math.max(10, Math.round(init.bal * 0.022)));
+
+  const c = useMemo(() => {
+    const B = bal * 10000, r = rate / 100 / 12, n = Math.round(years * 12);
+    if (B <= 0 || n <= 0) return null;
+    const M = r > 0 ? (B * r) / (1 - Math.pow(1 + r, -n)) : B / n;
+    const totalNow = M * n;
+    // 繰上返済
+    const B2 = Math.max(0, B - amt * 10000);
+    let pre;
+    if (ptype === "shorten") {
+      let n2;
+      if (r > 0) {
+        const x = 1 - (B2 * r) / M;
+        n2 = x > 0 ? Math.ceil(-Math.log(x) / Math.log(1 + r)) : 0;
+      } else n2 = Math.ceil(B2 / M);
+      n2 = Math.min(Math.max(n2, 0), n);
+      pre = { months: n - n2, saved: totalNow - B - (M * n2 - B2) };
+    } else {
+      const M2 = r > 0 ? (B2 * r) / (1 - Math.pow(1 + r, -n)) : B2 / n;
+      pre = { monthly: M - M2, saved: totalNow - B - (M2 * n - B2) };
+    }
+    // 借り換え
+    const r2 = nRate / 100 / 12, n2m = Math.round(nYears * 12);
+    const M3 = r2 > 0 ? (B * r2) / (1 - Math.pow(1 + r2, -n2m)) : B / n2m;
+    const cost = costMan * 10000;
+    const savedRefi = totalNow - (M3 * n2m + cost);
+    const monthlyDiff = M - M3;
+    const breakEven = monthlyDiff > 0 ? Math.ceil(cost / monthlyDiff) : null;
+    return { M, pre, M3, savedRefi, monthlyDiff, breakEven };
+  }, [bal, rate, years, amt, ptype, nRate, nYears, costMan]);
+
+  const box = { flex: "1 1 340px", border: `1px solid ${T.line}`, borderRadius: 12,
+    padding: "14px 16px", background: "#FBFCFD" };
+  const h3 = { fontSize: 14.5, fontWeight: 800, color: T.navy, margin: "0 0 10px" };
+  const res = { fontSize: 13.5, lineHeight: 2, background: "rgba(45,125,210,.06)",
+    border: "1px solid rgba(45,125,210,.2)", borderRadius: 10, padding: "10px 14px",
+    marginTop: 10 };
+
+  return (
+    <section style={cardSt}>
+      <h2 style={h2St}>繰上返済・借り換えシミュレーター</h2>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+        <Field label="現在の残債" value={bal} onChange={setBal} unit="万円" step={50} min={1} />
+        <Field label="現在の金利" value={rate} onChange={setRate} unit="%" step={0.05} min={0} />
+        <Field label="残り返済期間" value={years} onChange={setYears} unit="年" step={1} min={1} />
+        <button onClick={() => { const v = fromP(); setBal(v.bal); setRate(v.rate); setYears(v.years); }}
+          style={{ ...btnSt("#FFF"), color: T.navy, border: `1.5px solid ${T.navy}` }}>
+          物件条件から再取得</button>
+      </div>
+      {c && (
+        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 8 }}>
+          現在の毎月返済額: <b className="num">{Math.round(c.M).toLocaleString()}円</b>
+          (運用開始年 {actuals.startYear} からの経過で自動推定。実際の返済予定表があればその数字に直してください)
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
+        <div style={box}>
+          <h3 style={h3}>💰 繰上返済したら?</h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            <Field label="繰上額" value={amt} onChange={setAmt} unit="万円" step={10} min={1} />
+            <Select label="タイプ" value={ptype} onChange={setPtype}
+              options={[["shorten", "期間短縮型"], ["reduce", "返済額軽減型"]]} />
+          </div>
+          {c && (
+            <div style={res} className="num">
+              {ptype === "shorten" ? (
+                <>返済期間が <b style={{ color: T.good }}>{c.pre.months}ヶ月短縮</b>(約{(c.pre.months / 12).toFixed(1)}年)。
+                支払利息を <b style={{ color: T.good }}>約{fmtMan(c.pre.saved)}節約</b>できます。</>
+              ) : (
+                <>毎月の返済が <b style={{ color: T.good }}>{Math.round(c.pre.monthly).toLocaleString()}円軽減</b>。
+                支払利息を <b style={{ color: T.good }}>約{fmtMan(c.pre.saved)}節約</b>できます。</>
+              )}
+              <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4 }}>
+                ※ 手元資金が減るため、空室・修繕に備えた予備費(家賃6ヶ月分が目安)は残すのが安全です。
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={box}>
+          <h3 style={h3}>🔄 借り換えたら?</h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            <Field label="借換後の金利" value={nRate} onChange={setNRate} unit="%" step={0.05} min={0} />
+            <Field label="借換後の期間" value={nYears} onChange={setNYears} unit="年" step={1} min={1} />
+            <Field label="諸費用" value={costMan} onChange={setCostMan} unit="万円" step={5} min={0}
+              hint="事務手数料(借入額の2.2%が相場)+登記・印紙など" />
+          </div>
+          {c && (
+            <div style={res} className="num">
+              借換後の毎月返済: <b>{Math.round(c.M3).toLocaleString()}円</b>
+              ({c.monthlyDiff >= 0 ? "−" : "+"}{Math.abs(Math.round(c.monthlyDiff)).toLocaleString()}円/月)。
+              {c.savedRefi > 0 ? (
+                <> 諸費用込みで総支払を <b style={{ color: T.good }}>約{fmtMan(c.savedRefi)}削減</b>。
+                {c.breakEven && <>諸費用は <b>約{c.breakEven}ヶ月</b>で回収できます(損益分岐)。</>}</>
+              ) : (
+                <> この条件では諸費用が節約分を上回り、<b style={{ color: T.real }}>約{fmtMan(-c.savedRefi)}の持ち出し超過</b>です。
+                金利差0.5%pt以上・残期間10年以上が借り換えの一般的な目安です。</>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------- 設備・イベントカレンダー ----------
+function EventCalendar({ p, actuals, persist }) {
+  const nowY = new Date().getFullYear(), nowM = new Date().getMonth() + 1;
+  const custom = actuals.events || [];
+  const [f, setF] = useState({
+    month: nowY + "-" + String(nowM).padStart(2, "0"), label: "", amount: "" });
+
+  const add = () => {
+    if (!f.label.trim()) return;
+    persist({ ...actuals, events: [...custom,
+      { id: Date.now(), month: f.month, label: f.label.trim(),
+        amount: Math.max(0, Number(f.amount) || 0) }] });
+    setF({ ...f, label: "", amount: "" });
+  };
+  const del = (id) => persist({ ...actuals, events: custom.filter((e) => e.id !== id) });
+
+  const months = useMemo(() => {
+    const out = [];
+    for (let k = 0; k < 12; k++) {
+      const d = new Date(nowY, nowM - 1 + k, 1);
+      const y = d.getFullYear(), m = d.getMonth() + 1;
+      const key = y + "-" + String(m).padStart(2, "0");
+      const evs = [];
+      if (p.tax > 0 && [4, 7, 12, 2].includes(m)) {
+        evs.push({ label: "固定資産税 第" + { 4: 1, 7: 2, 12: 3, 2: 4 }[m] + "期(目安)",
+          amount: Math.round(p.tax / 4), auto: true });
+      }
+      if (m === 2) evs.push({ label: "確定申告の準備(申告期間 2/16〜3/15)", amount: 0, auto: true });
+      if (m === 1) {
+        for (const eq of p.equipment) {
+          if (!eq.on || !eq.installYear) continue;
+          const next = eq.installYear + eq.cycle;
+          if (next === y) evs.push({ label: eq.name + " 交換目安(年内)",
+            amount: eq.cost * 10000, auto: true });
+        }
+      }
+      custom.filter((e) => e.month === key).forEach((e) => evs.push({ ...e, auto: false }));
+      out.push({ key, y, m, evs });
+    }
+    return out;
+  }, [p, custom]);
+
+  const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
+    fontSize: 13, background: "#FBFCFD", color: T.ink };
+
+  return (
+    <section style={cardSt}>
+      <h2 style={h2St}>イベントカレンダー — 今後12ヶ月の支出・手続き予定</h2>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
+        marginBottom: 12 }}>
+        <input type="month" value={f.month}
+          onChange={(e) => setF({ ...f, month: e.target.value })} style={inSt} />
+        <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}
+          placeholder="予定を追加(例: 火災保険 更新)" style={{ ...inSt, flex: "1 1 200px" }}
+          onKeyDown={(e) => e.key === "Enter" && add()} />
+        <input type="number" value={f.amount} min={0}
+          onChange={(e) => setF({ ...f, amount: e.target.value })}
+          placeholder="金額(円・任意)" style={{ ...inSt, width: 130 }} />
+        <button onClick={add} style={btnSt(T.navy)}>+ 追加</button>
+      </div>
+      {months.map(({ key, y, m, evs }) => (
+        <div key={key} style={{ display: "flex", gap: 12, padding: "8px 0",
+          borderBottom: `1px dashed ${T.line}`, alignItems: "baseline" }}>
+          <div style={{ width: 86, fontSize: 13, fontWeight: 800, color: T.navy,
+            flexShrink: 0 }} className="num">{y}年{m}月</div>
+          <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {evs.length === 0
+              ? <span style={{ fontSize: 12, color: "#B7C1CB" }}>—</span>
+              : evs.map((e, i) => (
+                <span key={e.id || key + i} style={{ fontSize: 12, padding: "4px 12px",
+                  borderRadius: 12, display: "inline-flex", gap: 6, alignItems: "center",
+                  background: e.auto ? "rgba(45,125,210,.08)" : "rgba(43,184,163,.1)",
+                  border: e.auto ? "1px solid rgba(45,125,210,.25)" : "1px solid rgba(43,184,163,.35)",
+                  color: T.ink }} className="num">
+                  {e.label}{e.amount > 0 && <b>{e.amount.toLocaleString()}円</b>}
+                  {!e.auto && (
+                    <button onClick={() => del(e.id)} style={{ border: "none",
+                      background: "none", color: T.sub, cursor: "pointer", padding: 0,
+                      fontSize: 13, lineHeight: 1 }}>×</button>)}
+                </span>))}
+          </div>
+        </div>
+      ))}
+      <div style={{ fontSize: 11.5, color: T.sub, marginTop: 10 }}>
+        青いチップは物件パラメータからの自動生成(固定資産税の納期は自治体により異なります。目安として一般的な4期を表示)。
+        緑のチップは手動追加の予定です。設備の交換年は下ではなく上の設備台帳の設置年から計算しています。
+      </div>
+    </section>
+  );
+}
+
+// ---------- 検討候補トレイ(物件探し期の日常メモ) ----------
+const LEAD_STATUSES = ["気になる", "検討中", "内見予定", "見送り"];
+
+function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
+  const [f, setF] = useState({ name: "", url: "", price: "", rent: "", memo: "" });
+  const [msg, setMsg] = useState("");
+  const cap = isPro ? 50 : 5;
+
+  const add = async () => {
+    if (!f.name.trim()) { setMsg("物件名(または駅名などの目印)を入力してください"); return; }
+    const r = await onAdd({
+      name: f.name.trim(), url: f.url.trim(),
+      price: Math.max(0, Number(f.price) || 0),
+      rent: Math.max(0, Number(f.rent) || 0),
+      memo: f.memo.trim(),
+    });
+    if (!r.ok) { setMsg(r.msg); return; }
+    setF({ name: "", url: "", price: "", rent: "", memo: "" });
+    setMsg("");
+  };
+
+  const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
+    fontSize: 13, background: "#FBFCFD", color: T.ink, width: "100%" };
+
+  return (
+    <section style={cardSt}>
+      <h2 style={h2St}>検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
+      <div style={{ display: "grid", gap: 8,
+        gridTemplateColumns: "1.4fr 1.6fr 0.8fr 0.9fr", alignItems: "end" }}>
+        <label style={{ fontSize: 11.5, color: T.sub }}>物件名・目印*
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="例: 文京区 白山 1K 3階" style={inSt} /></label>
+        <label style={{ fontSize: 11.5, color: T.sub }}>URL(任意)
+          <input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })}
+            placeholder="ポータルの物件ページURL" style={inSt} /></label>
+        <label style={{ fontSize: 11.5, color: T.sub }}>価格(万円)
+          <input type="number" value={f.price} min={0}
+            onChange={(e) => setF({ ...f, price: e.target.value })} style={inSt} /></label>
+        <label style={{ fontSize: 11.5, color: T.sub }}>想定家賃(円/月)
+          <input type="number" value={f.rent} min={0}
+            onChange={(e) => setF({ ...f, rent: e.target.value })} style={inSt} /></label>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+        <input value={f.memo} onChange={(e) => setF({ ...f, memo: e.target.value })}
+          placeholder="メモ(任意): 駅徒歩5分、南向き、管理費1.2万 など"
+          style={{ ...inSt, flex: 1 }}
+          onKeyDown={(e) => e.key === "Enter" && add()} />
+        <button onClick={add} style={btnSt(T.navy)}>+ 追加</button>
+      </div>
+      {msg && <div style={{ fontSize: 12, color: T.real, marginTop: 6 }}>{msg}</div>}
+
+      {leads.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 14, lineHeight: 1.9 }}>
+          ポータルサイトで気になった物件を、ここにストックしておけます。
+          価格と家賃を入れておくと表面利回りが自動計算され、「診断する」で
+          そのままシミュレーションに流せます。
+        </div>
+      ) : (
+        <div style={{ marginTop: 14 }}>
+          {leads.map((l) => {
+            const gross = l.price > 0 && l.rent > 0
+              ? ((l.rent * 12) / (l.price * 10000)) * 100 : null;
+            const dim = l.status === "見送り";
+            return (
+              <div key={l.id} style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px",
+                alignItems: "center", padding: "10px 0",
+                borderBottom: `1px dashed ${T.line}`, opacity: dim ? 0.45 : 1 }}>
+                <div style={{ flex: "2 1 220px", minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {l.url
+                      ? <a href={l.url} target="_blank" rel="noreferrer"
+                          style={{ color: T.blue }}>{l.name} ↗</a>
+                      : l.name}
+                  </div>
+                  {l.memo && <div style={{ fontSize: 11.5, color: T.sub, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.memo}</div>}
+                </div>
+                <div style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums",
+                  flex: "1 1 170px" }} className="num">
+                  {l.price > 0 ? <b>{l.price.toLocaleString()}万円</b> : <span style={{ color: T.sub }}>価格未定</span>}
+                  {l.rent > 0 && <> ／ {l.rent.toLocaleString()}円</>}
+                  {gross != null && (
+                    <span style={{ marginLeft: 8, fontWeight: 700,
+                      color: gross < 4 ? T.real : gross < 5.5 ? T.warnInk : T.good }}>
+                      表面{gross.toFixed(2)}%</span>)}
+                </div>
+                <select value={l.status || "気になる"}
+                  onChange={(e) => onUpdate(l.id, { status: e.target.value })}
+                  style={{ padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8,
+                    fontSize: 12, background: "#FFF", color: T.ink }}>
+                  {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button onClick={() => onSimulate(l)}
+                  disabled={!(l.price > 0 && l.rent > 0)}
+                  title={l.price > 0 && l.rent > 0 ? "" : "価格と家賃を入力すると診断できます"}
+                  style={{ ...btnSt(T.blue), opacity: l.price > 0 && l.rent > 0 ? 1 : 0.4 }}>
+                  診断する →</button>
+                <button onClick={() => onDelete(l.id)}
+                  style={{ padding: "6px 10px", background: "none",
+                    border: `1px solid ${T.line}`, color: T.sub, borderRadius: 8,
+                    fontSize: 12, cursor: "pointer" }}>削除</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab, leads, onAddLead, onUpdateLead, onDeleteLead, onSimulateLead }) {
+  const now = new Date();
+  const nowY = now.getFullYear(), nowM = now.getMonth() + 1;
+  const monthsFrom = (ym) => {
+    if (!ym) return 0;
+    const [y, m] = ym.split("-").map(Number);
+    return Math.max(0, (nowY - y) * 12 + (nowM - m));
+  };
+  const sinceOf = (r) => r.ownedSince || r.savedAt.slice(0, 7);
+
+  const owned = properties.filter((r) => r.owned);
+  const sims = useMemo(
+    () => owned.map((r) => ({ r, real: simulate(r.params, true) })),
+    [properties]);
+
+  // 今日のサマリー(全保有物件の合算)
+  const agg = useMemo(() => {
+    let cfMonth = 0, principal = 0, net = 0, netPrev = 0, debt = 0;
+    for (const { r, real } of sims) {
+      const q = r.params;
+      const tm = monthsFrom(sinceOf(r));
+      const t = tm / 12, tPrev = Math.max(0, (tm - 1) / 12);
+      cfMonth += cfAtYear(real, t) / 12;
+      const bNow = balanceAt(q, real, t);
+      principal += Math.max(0, bNow - balanceAt(q, real, t + 1 / 12));
+      debt += bNow;
+      net += valuationNetAt(q, t) - bNow;
+      netPrev += valuationNetAt(q, tPrev) - balanceAt(q, real, tPrev);
+    }
+    return { cfMonth, principal, net, netDelta: net - netPrev, debt };
+  }, [sims]);
+
+  // 純資産トラッカー(取得月から現在まで・計画ベース月次)
+  const track = useMemo(() => {
+    if (!owned.length) return [];
+    const span = Math.min(Math.max(...owned.map((r) => monthsFrom(sinceOf(r))), 1), 180);
+    const out = [];
+    for (let k = span; k >= 0; k--) {
+      let v = 0, any = false;
+      for (const { r, real } of sims) {
+        const tm = monthsFrom(sinceOf(r)) - k;
+        if (tm < 0) continue;
+        any = true;
+        v += valuationNetAt(r.params, tm / 12) - balanceAt(r.params, real, tm / 12);
+      }
+      if (!any) continue;
+      const d = new Date(nowY, nowM - 1 - k, 1);
+      out.push({ label: d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, "0"),
+        純資産: Math.round(v / 10000) });
+    }
+    return out;
+  }, [sims]);
+
+  // 月次レビュー(前月・テンプレート文章生成/AI不使用)
+  const review = useMemo(() => {
+    const d = new Date(nowY, nowM - 2, 1);
+    const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    const label = d.getFullYear() + "年" + (d.getMonth() + 1) + "月";
+    const items = (actuals.items || []).filter((x) => x.month === key);
+    if (!items.length) return { key, label, text: null };
+    const inc = items.filter((x) => x.kind === "income").reduce((s, x) => s + x.amount, 0);
+    const exp = items.filter((x) => x.kind === "expense").reduce((s, x) => s + x.amount, 0);
+    const act = inc - exp;
+    let plan = 0;
+    for (const { r, real } of sims) {
+      const tm = monthsFrom(sinceOf(r)) - 1;
+      if (tm < 0) continue;
+      plan += cfAtYear(real, tm / 12) / 12;
+    }
+    const diff = act - plan;
+    const byCat = {};
+    items.filter((x) => x.kind === "expense")
+      .forEach((x) => { byCat[x.category] = (byCat[x.category] || 0) + x.amount; });
+    const top = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
+    let text = `${label}の実績キャッシュフローは${act >= 0 ? "+" : "−"}${Math.abs(act).toLocaleString()}円`;
+    text += owned.length ? `(計画比 ${diff >= 0 ? "+" : "−"}${Math.abs(Math.round(diff)).toLocaleString()}円)。` : "。";
+    text += diff >= 0
+      ? " 計画を上回る堅調な着地です。"
+      : top ? ` 計画を下回りました。最大の支出項目は「${top[0]}」(${top[1].toLocaleString()}円)です。`
+            : " 計画を下回りました。";
+    if (owned.length) {
+      text += ` 残債返済による資産の積み上げは今月約${fmtMan(agg.principal)}、想定純資産は前月比${agg.netDelta >= 0 ? "+" : "−"}${fmtMan(Math.abs(agg.netDelta))}です。`;
+    }
+    return { key, label, text, act };
+  }, [actuals, sims, agg]);
+
+  const inSt = { padding: "7px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
+    fontSize: 13, background: "#FBFCFD", color: T.ink };
+
+  return (
+    <div>
+      {/* 保有物件の設定 */}
+      <section style={cardSt}>
+        <h2 style={h2St}>保有ポートフォリオ</h2>
+        {properties.length === 0 ? (
+          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.9 }}>
+            まだ物件が保存されていません。シミュレーションタブで条件を作って保存し、
+            ここで「保有中」にチェックを入れると、ダッシュボードが動き出します。
+            <div style={{ marginTop: 10 }}>
+              <button onClick={() => goTab("sim")} style={btnSt(T.navy)}>
+                シミュレーションへ</button>
+            </div>
+          </div>
+        ) : (
+          properties.map((r) => (
+            <div key={r.id} style={{ display: "flex", gap: 14, alignItems: "center",
+              flexWrap: "wrap", padding: "9px 0", borderBottom: `1px dashed ${T.line}` }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5,
+                fontWeight: 700, cursor: "pointer", flex: "1 1 200px" }}>
+                <input type="checkbox" checked={!!r.owned}
+                  onChange={(e) => updateProperty(r.id, { owned: e.target.checked,
+                    ownedSince: r.ownedSince || r.savedAt.slice(0, 7) })} />
+                {r.name}
+                <span style={{ fontWeight: 400, color: T.sub, fontSize: 12 }}>
+                  ({r.params.price.toLocaleString()}万円)</span>
+              </label>
+              {r.owned && (
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12,
+                  color: T.sub }}>
+                  取得年月:
+                  <input type="month" value={r.ownedSince || r.savedAt.slice(0, 7)}
+                    onChange={(e) => updateProperty(r.id, { ownedSince: e.target.value })}
+                    style={inSt} />
+                </label>
+              )}
+            </div>
+          ))
+        )}
+        {properties.length > 0 && owned.length === 0 && (
+          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 10 }}>
+            「保有中」にチェックを入れた物件が、下のサマリーと純資産トラッカーに反映されます。
+            検討中の物件はチェックなしのままでOKです。
+          </div>
+        )}
+      </section>
+
+      {/* 検討候補トレイ */}
+      <LeadTray leads={leads} isPro={isPro} onAdd={onAddLead}
+        onUpdate={onUpdateLead} onDelete={onDeleteLead} onSimulate={onSimulateLead} />
+
+      {/* 今日のサマリー */}
+      {owned.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          <Kpi label="保有物件" value={owned.length + "件"}
+               sub={"想定残債 " + fmtMan(agg.debt)} />
+          <Kpi label="今月の計画キャッシュフロー" value={fmtMan(agg.cfMonth)}
+               color={agg.cfMonth < 0 ? T.real : T.good} />
+          <Kpi label="今月の残債減少(資産の積み上げ)" value={fmtMan(agg.principal)} color={T.blue} />
+          <Kpi label="想定純資産(売却手取−残債)" value={fmtMan(agg.net)}
+               color={agg.net < 0 ? T.real : T.good}
+               sub={"前月比 " + (agg.netDelta >= 0 ? "+" : "−") + fmtMan(Math.abs(agg.netDelta))} />
+        </div>
+      )}
+
+      {/* 純資産トラッカー */}
+      {owned.length > 0 && (
+        <section style={{ ...cardSt, padding: "14px 8px 4px" }}>
+          <h2 style={{ ...h2St, margin: "0 8px 8px" }}>純資産トラッカー — 取得からの積み上がり(万円・計画ベース)</h2>
+          {isPro ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={track} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: T.sub }} />
+                <YAxis tick={{ fontSize: 11, fill: T.sub }} width={56} />
+                <Tooltip formatter={(v) => v.toLocaleString() + "万円"} />
+                <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
+                <Line type="monotone" dataKey="純資産" stroke={T.teal} strokeWidth={2.5} dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <LockCard onUpgrade={onUpgrade} label="純資産トラッカー">
+              <div style={{ height: 240, display: "flex", alignItems: "center",
+                justifyContent: "center", fontSize: 24, fontWeight: 800, color: T.teal }}>
+                📈 {fmtMan(agg.net)}</div>
+            </LockCard>
+          )}
+          <div style={{ fontSize: 11, color: T.sub, margin: "4px 8px 10px" }}>
+            想定売却手取(諸費用控除後・譲渡税考慮前)−残債の計画ベース推移です。実勢価格の変動は反映されません。
+          </div>
+        </section>
+      )}
+
+      {/* 月次レビュー */}
+      <section style={cardSt}>
+        <h2 style={h2St}>月次レビュー — {review.label}</h2>
+        {isPro ? (
+          review.text ? (
+            <p style={{ fontSize: 14, lineHeight: 2.1, margin: 0,
+              background: "rgba(45,125,210,.06)", border: "1px solid rgba(45,125,210,.2)",
+              borderRadius: 12, padding: "14px 18px" }}>{review.text}</p>
+          ) : (
+            <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.9 }}>
+              {review.label}の実績がまだ入力されていません。家賃の入金と支出を記録すると、
+              計画との比較レビューがここに自動生成されます。
+              <div style={{ marginTop: 10 }}>
+                <button onClick={() => goTab("ops")} style={btnSt(T.navy)}>
+                  実績を入力する(運用管理へ)</button>
+              </div>
+            </div>
+          )
+        ) : (
+          <LockCard onUpgrade={onUpgrade} label="月次レビュー">
+            <p style={{ fontSize: 14, lineHeight: 2.1, margin: 0, padding: "14px 18px" }}>
+              {review.label}の実績キャッシュフローは+68,000円(計画比 +3,200円)。計画を上回る堅調な着地です。
+              残債返済による資産の積み上げは今月約6万円、想定純資産は前月比+8万円です。</p>
+          </LockCard>
+        )}
+      </section>
+    </div>
+  );
+}
+
 // ---------- AI調査値の表示 ----------
 const AI_FIELDS = [
   ["rentDeclinePct", "家賃変動", (v) => v + "%/年"],
@@ -1566,6 +2152,83 @@ function AiValues({ d }) {
       {AI_FIELDS.filter(([k]) => typeof d[k] === "number").map(([k, label, f]) => (
         <span key={k}>{label}: <b>{f(d[k])}</b></span>
       ))}
+    </div>
+  );
+}
+
+// ---------- パスワード再設定モーダル(回復リンクから遷移) ----------
+function PasswordResetModal({ open, onClose }) {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  if (!open) return null;
+
+  const rules = [
+    { ok: pw.length >= 8, label: "8文字以上" },
+    { ok: /[a-z]/.test(pw), label: "小文字を含む" },
+    { ok: /[A-Z]/.test(pw), label: "大文字を含む" },
+    { ok: /[0-9]/.test(pw), label: "数字を含む" },
+    { ok: /[^A-Za-z0-9]/.test(pw), label: "記号(!?/#など)を含む" },
+  ];
+  const strong = rules.every((r) => r.ok);
+
+  const go = async () => {
+    if (!strong) { setMsg("パスワードが条件を満たしていません"); return; }
+    if (pw !== pw2) { setMsg("確認用パスワードが一致しません"); return; }
+    setBusy(true); setMsg("");
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) setMsg("設定に失敗しました: " + error.message);
+    else { setDone(true); setMsg(""); }
+  };
+
+  const inSt = { width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`,
+    borderRadius: 8, fontSize: 14, marginBottom: 10, fontFamily: "inherit" };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 110,
+      background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#FFF", borderRadius: 12, padding: 24, maxWidth: 400,
+        width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: T.navy, margin: "0 0 12px" }}>
+          新しいパスワードを設定</h3>
+        {done ? (
+          <>
+            <p style={{ fontSize: 13.5, lineHeight: 1.9, color: T.ink }}>
+              パスワードを変更しました。次回からは新しいパスワードでログインできます。</p>
+            <button onClick={onClose} style={{ marginTop: 8, width: "100%", padding: "11px",
+              background: T.grad, color: "#FFF", border: "none", borderRadius: 8,
+              fontSize: 14, fontWeight: 700, cursor: "pointer" }}>利用をつづける</button>
+          </>
+        ) : (
+          <>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+              placeholder="新しいパスワード" autoComplete="new-password" style={inSt} />
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)}
+              placeholder="新しいパスワード(確認)" autoComplete="new-password"
+              style={{ ...inSt,
+                borderColor: pw2.length === 0 ? T.line : pw === pw2 ? T.good : T.real }}
+              onKeyDown={(e) => e.key === "Enter" && go()} />
+            <div style={{ fontSize: 11.5, lineHeight: 1.9, background: "#F6F8FA",
+              borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+              {rules.map((r) => (
+                <div key={r.label} style={{ color: r.ok ? T.good : T.sub }}>
+                  {r.ok ? "✓" : "・"} {r.label}</div>))}
+            </div>
+            <button onClick={go} disabled={busy || !strong || pw !== pw2 || pw2.length === 0}
+              style={{ width: "100%", padding: "11px", background: T.real, color: "#FFF",
+                border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                cursor: "pointer",
+                opacity: busy || !strong || pw !== pw2 || pw2.length === 0 ? 0.5 : 1 }}>
+              {busy ? "設定中…" : "パスワードを変更する"}</button>
+            {msg && <div style={{ fontSize: 12, color: T.warnInk, marginTop: 10,
+              lineHeight: 1.7, background: T.warnBg, borderRadius: 8,
+              padding: "8px 10px" }}>{msg}</div>}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -1617,6 +2280,16 @@ function AuthModal({ open, onClose }) {
     setBusy(false);
   };
 
+  const forgot = async () => {
+    if (!email) { setMsg("メールアドレスを入力してから「お忘れですか?」を押してください"); return; }
+    setBusy(true); setMsg("");
+    const { error } = await supabase.auth.resetPasswordForEmail(email,
+      { redirectTo: window.location.origin });
+    setBusy(false);
+    setMsg(error ? "送信に失敗しました: " + error.message
+      : "パスワード再設定メールを送信しました。メール内のリンクを開くと、新しいパスワードの設定画面が表示されます。");
+  };
+
   const inSt = { width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`,
     borderRadius: 8, fontSize: 14, marginBottom: 10, fontFamily: "inherit" };
   return (
@@ -1648,6 +2321,14 @@ function AuthModal({ open, onClose }) {
           placeholder="パスワード" style={inSt}
           autoComplete={tab === "signup" ? "new-password" : "current-password"}
           onKeyDown={(e) => tab === "login" && e.key === "Enter" && go()} />
+        {tab === "login" && (
+          <div style={{ margin: "-4px 0 10px", textAlign: "right" }}>
+            <button onClick={forgot} disabled={busy} style={{ background: "none",
+              border: "none", color: T.blue, fontSize: 12, cursor: "pointer",
+              textDecoration: "underline", padding: 0 }}>
+              パスワードをお忘れですか?</button>
+          </div>
+        )}
         {tab === "signup" && (
           <>
             <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)}
@@ -1737,7 +2418,8 @@ function UpgradeModal({ open, onClose, onUnlocked, authed, email, onRefresh }) {
           Proプランで全機能を開放</h3>
         <p style={{ fontSize: 12.5, color: T.sub, margin: "0 0 12px", lineHeight: 1.7 }}>
           詳細モード(全パラメータ) ／ 分析タブ(感度・ストレス・出口) ／ 運用管理 ／
-          AI市場調査 月10回 ／ 物件保存 無制限 ／ IRR・CCR・DSCR比較 ／ レポート出力(PDF)
+          AI市場調査 月10回 ／ 物件保存 無制限 ／ IRR・CCR・DSCR比較 ／ レポート出力(PDF) ／
+          資産ダッシュボード(純資産トラッカー・月次レビュー)
         </p>
 
         {authed !== null ? (
@@ -1844,13 +2526,14 @@ export default function App() {
   const [aiState, setAiState] = useState({ status: "idle", data: null, error: null });
 
   // タブ・リサーチ・物件・予実(すべて永続保存)
-  const [tab, setTab] = useState("sim");
+  const [tab, setTab] = useState("home");
   const [mode, setMode] = useState("easy"); // かんたん/詳細
   // プラン(フリーミアム) + アカウント認証
   const [localPlan, setLocalPlan] = useState(loadPlan()); // 認証未設定時のフォールバック
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [pwResetOpen, setPwResetOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [cmpReport, setCmpReport] = useState(null); // 比較レポート用の行データ
@@ -1863,6 +2546,7 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       const u = (session && session.user) || null;
       setUser(u);
+      if (_e === "PASSWORD_RECOVERY") setPwResetOpen(true); // 再設定メールから戻ってきた
       if (!u) purgeLocalMirror(); // ログアウト時: 端末に残る控えデータを消去
     });
     return () => sub.subscription.unsubscribe();
@@ -1905,6 +2589,7 @@ export default function App() {
     loadKey(KEY_PROPS, []).then(setProperties);
     loadKey(KEY_ACTUALS, null).then((a) =>
       setActuals(a || { startYear: new Date().getFullYear(), items: [] }));
+    loadKey(KEY_LEADS, []).then(setLeads);
     loadKey("ui-mode", "easy").then(setMode);
     setStorageNote(authEnabled && !user
       ? "ログインすると、保存データ(リサーチ・物件・予実)がアカウントに保存され、他の端末からも利用できます"
@@ -1927,6 +2612,37 @@ export default function App() {
     setP({ ...rec.params, equipment: rec.params.equipment.map((e) => ({ ...e })) });
     setTab("sim");
   };
+  const [leads, setLeads] = useState([]);
+
+  const addLead = async (lead) => {
+    const cap = isPro ? 50 : 5;
+    if (leads.length >= cap) {
+      return { ok: false, msg: isPro
+        ? "候補メモの上限(50件)に達しました。見送り物件を削除して整理してください"
+        : "Freeプランの候補メモは5件までです。Proなら50件まで保存できます" };
+    }
+    const rec = { id: Date.now(), addedAt: new Date().toISOString(),
+      status: "気になる", ...lead };
+    setLeads(await saveKey(KEY_LEADS, [rec, ...leads], 50));
+    return { ok: true };
+  };
+  const updateLead = async (id, patch) =>
+    setLeads(await saveKey(KEY_LEADS,
+      leads.map((l) => (l.id === id ? { ...l, ...patch } : l)), 50));
+  const deleteLead = async (id) =>
+    setLeads(await saveKey(KEY_LEADS, leads.filter((l) => l.id !== id), 50));
+  const simulateLead = (l) => {
+    setP((s) => ({ ...s,
+      price: l.price > 0 ? l.price : s.price,
+      rent: l.rent > 0 ? l.rent : s.rent }));
+    setTab("sim");
+  };
+
+  const updateProperty = async (id, patch) => {
+    const next = properties.map((r) => (r.id === id ? { ...r, ...patch } : r));
+    setProperties(await saveKey(KEY_PROPS, next, 30));
+  };
+
   const deleteProperty = async (id) =>
     setProperties(await saveKey(KEY_PROPS, properties.filter((r) => r.id !== id)));
 
@@ -2080,6 +2796,7 @@ export default function App() {
           onRefresh={refreshProfile}
           onUnlocked={() => { setLocalPlan("pro"); setUpgradeOpen(false); }} />}
         {authOpen && <AuthModal open onClose={() => setAuthOpen(false)} />}
+        {pwResetOpen && <PasswordResetModal open onClose={() => setPwResetOpen(false)} />}
         {accountOpen && <AccountModal open onClose={() => setAccountOpen(false)}
           user={user} profile={profile} />}
         {reportOpen && isPro && (
@@ -2090,7 +2807,8 @@ export default function App() {
         {cmpReport && <CompareReportView rows={cmpReport} onClose={() => setCmpReport(null)} />}
 
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-          {[["sim", "シミュレーション", true], ["cmp", "物件比較", true],
+          {[["home", "ホーム", true], ["sim", "シミュレーション", true],
+            ["cmp", "物件比較", true],
             ["ana", "分析", isPro], ["ops", "運用管理", isPro]]
             .map(([k, l, ok]) => (
             <button key={k} onClick={() => (ok ? setTab(k) : setUpgradeOpen(true))} style={{
@@ -2102,6 +2820,18 @@ export default function App() {
               color: tab === k ? "#FFF" : ok ? T.ink : T.sub }}>{ok ? l : "\uD83D\uDD12 " + l}</button>
           ))}
         </nav>
+
+        {tab === "home" && (
+          <HomeTab properties={properties} updateProperty={updateProperty}
+            leads={leads} onAddLead={addLead} onUpdateLead={updateLead}
+            onDeleteLead={deleteLead} onSimulateLead={simulateLead}
+            actuals={actuals} isPro={isPro}
+            onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))}
+            goTab={(k) => {
+              if ((k === "ops" || k === "ana") && !isPro) { setUpgradeOpen(true); return; }
+              setTab(k);
+            }} />
+        )}
 
         {tab === "sim" && (<>
 
@@ -2499,7 +3229,11 @@ export default function App() {
         )}
         {tab === "ana" && isPro && <AnalysisTab p={p} />}
         {tab === "ops" && isPro && (
-          <OpsTab p={p} setP={setP} actuals={actuals} persist={persistActuals} />
+          <>
+            <OpsTab p={p} setP={setP} actuals={actuals} persist={persistActuals} />
+            <LoanLab p={p} actuals={actuals} />
+            <EventCalendar p={p} actuals={actuals} persist={persistActuals} />
+          </>
         )}
 
         <footer style={{ background: T.warnBg, border: `1px solid #E8D9BC`, borderRadius: 10,
@@ -2507,6 +3241,14 @@ export default function App() {
           注意:税計算は限界税率による簡易計算で、累進・各種控除・建物附属設備の償却区分・資本的支出の資産計上は簡略化しています。
           AI取得データはウェブ検索に基づく推定値であり、最終判断には自身でのレントロール・登記・管理規約等の一次資料確認が必要です。
           「楽観」は満室・金利固定・家賃一定・退去/設備/税コストなしの前提を再現したものです。
+          <div style={{ marginTop: 8 }}>
+            <a href="https://realsim-lp.vercel.app/terms.html" target="_blank" rel="noreferrer"
+              style={{ color: T.warnInk, marginRight: 14 }}>利用規約</a>
+            <a href="https://realsim-lp.vercel.app/privacy.html" target="_blank" rel="noreferrer"
+              style={{ color: T.warnInk, marginRight: 14 }}>プライバシーポリシー</a>
+            <a href="https://realsim-lp.vercel.app/tokushoho.html" target="_blank" rel="noreferrer"
+              style={{ color: T.warnInk }}>特定商取引法に基づく表記</a>
+          </div>
         </footer>
       </div>
     </div>

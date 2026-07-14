@@ -283,10 +283,6 @@ export default async function handler(req, res) {
   if (who.error) return res.status(who.status).json({ error: who.error });
   const plan = await requirePro(who.userId);
   if (plan.error) return res.status(plan.status).json({ error: plan.error });
-  if (!consumeDailyQuota(who.userId)) {
-    return res.status(429).json({ error: "本日の相場照合回数上限(30回)に達しました" });
-  }
-
   const body = parseBody(req);
   const pref = String(body.pref || "").trim();
   const cityName = normalizeCityName(body.cityName);
@@ -306,6 +302,10 @@ export default async function handler(req, res) {
     return res.status(501).json({
       error: "サーバーに MLIT_API_KEY が未設定です",
     });
+  }
+
+  if (!consumeDailyQuota(who.userId)) {
+    return res.status(429).json({ error: "本日の相場照合回数上限(30回)に達しました" });
   }
 
   const key = requestKey(pref, cityName, type);

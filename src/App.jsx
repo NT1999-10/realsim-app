@@ -5,18 +5,11 @@ import {
 } from "recharts";
 import { PLANS, PURCHASE_URL, verifyLicense, loadPlan, savePlan, aiQuota } from "./plan.js";
 import { supabase, authEnabled } from "./auth.js";
+import { T } from "./theme.js";
+import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
+import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
 
-// ---------- design tokens ----------
-const T = {
-  bg: "transparent", // 背景はindex.htmlのグラデーション+ドットグリッド
-  card: "#FFFFFF", ink: "#10202E", sub: "#5A6B7B",
-  line: "#E2E8EF", navy: "#1F3A52",
-  blue: "#2D7DD2", teal: "#2BB8A3",
-  grad: "linear-gradient(120deg,#2D7DD2,#2BB8A3)",
-  real: "#D14B32", realSoft: "rgba(209,75,50,0.10)", opt: "#9DB6C8",
-  good: "#1F8A72", warnBg: "#FBF3E6", warnInk: "#8A5A12",
-  aiBg: "rgba(43,184,163,0.08)", aiInk: "#137A68",
-};
+
 
 const fmtMan = (yen) => {
   const man = yen / 10000;
@@ -24,218 +17,10 @@ const fmtMan = (yen) => {
   return Math.round(man).toLocaleString() + "万円";
 };
 
-// ---------- simulation ----------
-function simulate(p, realistic) {
-  let balance = Math.max(p.price * 10000 - p.downPayment * 10000, 0);
-  const loan0 = balance;
-  const totalM = p.loanYears * 12;
-  let remain = totalM;
-  let occupied = true;
-  let stateLeft = Math.max(1, Math.round(p.stayYears * 12));
-  let tenancyM = 0; // 入居継続月数(更新料用)
-  let accumDep = 0;
-  const depAnnual = (p.price * 10000 * p.bldgRatio / 100) / Math.max(1, p.depYears);
-  const years = [];
-  let cum = 0;
 
-  for (let y = 1; y <= p.simYears; y++) {
-    const rate = realistic
-      ? Math.min(p.rate0 + p.rateSlope * (y - 1), p.rateCap)
-      : p.rate0;
-    const mr = rate / 100 / 12;
-    let pay = 0;
-    if (balance > 0 && remain > 0 && p.repayMethod === "annuity") {
-      pay = mr === 0 ? balance / remain
-        : (balance * mr) / (1 - Math.pow(1 + mr, -remain));
-    }
-    const rent = realistic ? p.rent * Math.pow(1 - p.rentDecline / 100, y - 1) : p.rent;
-    const repairY = realistic ? p.repairBase * Math.pow(1 + p.repairInfl / 100, y - 1) : p.repairBase;
-    const bldgFeeM = realistic ? p.bldgFee * Math.pow(1 + p.bldgFeeInfl / 100, y - 1) : p.bldgFee;
-
-    let income = 0, expense = 0, loanPaid = 0, interestPaid = 0;
-
-    for (let m = 0; m < 12; m++) {
-      if (realistic) {
-        if (stateLeft <= 0) {
-          if (occupied) {
-            occupied = false; tenancyM = 0;
-            stateLeft = Math.max(0, Math.round(p.vacancyMonths));
-            expense += p.restorationCost;
-            if (stateLeft === 0) {
-              occupied = true;
-              stateLeft = Math.max(1, Math.round(p.stayYears * 12));
-              expense += rent * p.adMonths;
-              income += rent * p.reikinMonths;
-            }
-          } else {
-            occupied = true;
-            stateLeft = Math.max(1, Math.round(p.stayYears * 12));
-            expense += rent * p.adMonths;
-            income += rent * p.reikinMonths;
-          }
-        }
-      } else occupied = true;
-
-      if (occupied) {
-        income += rent;
-        expense += rent * (p.mgmtPct / 100);
-        tenancyM += 1;
-        // 更新料(貸主受取分)
-        if (realistic && p.renewalEveryYears > 0 && tenancyM > 0 &&
-            tenancyM % Math.round(p.renewalEveryYears * 12) === 0) {
-          income += rent * p.renewalOwnerMonths;
-        }
-      }
-      stateLeft -= 1;
-
-      expense += bldgFeeM;
-      expense += (p.tax + p.insurance + p.otherAnnual) / 12;
-      expense += repairY / 12;
-
-      if (balance > 0 && remain > 0) {
-        const interest = balance * mr;
-        let principal;
-        if (p.repayMethod === "annuity") principal = Math.min(pay - interest, balance);
-        else principal = Math.min(loan0 / totalM, balance); // 元金均等
-        balance -= principal;
-        loanPaid += interest + principal;
-        interestPaid += interest;
-        remain -= 1;
-      }
-    }
-
-    // 設備交換・大規模修繕(現実のみ)
-    let capexCost = 0;
-    if (realistic) {
-      for (const eq of p.equipment) {
-        if (eq.on && eq.cycle > 0 && y % eq.cycle === 0) capexCost += eq.cost * 10000;
-      }
-      if (p.bigRepairCycle > 0 && y % p.bigRepairCycle === 0) capexCost += p.bigRepairCost * 10000;
-    }
-    expense += capexCost;
-
-    // 減価償却・税(簡易)
-    let dep = 0, taxPaid = 0;
-    if (y <= p.depYears) { dep = depAnnual; accumDep += dep; }
-    if (p.taxOn && realistic) {
-      const taxable = income - (expense - 0) - interestPaid - dep; // 元金は損金不算入
-      taxPaid = p.lossOffset
-        ? taxable * (p.taxRate / 100)               // 損益通算(赤字なら還付)
-        : Math.max(0, taxable) * (p.taxRate / 100);
-    }
-
-    const cf = income - expense - loanPaid - taxPaid;
-    cum += cf;
-    years.push({
-      year: y, income, expense, loanPaid, interestPaid, dep, taxPaid,
-      cf, cum, balance, rate, rentMonthly: rent, accumDep,
-    });
-  }
-  return years;
-}
-
-function saleAnalysis(p, real) {
-  const last = real[real.length - 1];
-  let salePrice;
-  if (p.saleMode === "yield") {
-    salePrice = (last.rentMonthly * 12) / Math.max(0.1, p.exitYieldPct / 100);
-  } else {
-    salePrice = p.price * 10000 * Math.pow(1 + p.priceTrendPct / 100, p.simYears);
-  }
-  const sellCost = salePrice * (p.sellCostPct / 100);
-  const book = p.price * 10000 - last.accumDep;
-  const gain = salePrice - sellCost - book;
-  const capTax = p.capGainTaxOn ? Math.max(0, gain) * 0.20315 : 0;
-  const netSale = salePrice - sellCost - last.balance - capTax;
-  const initialEquity = (p.downPayment + p.price * (p.costsPct / 100)) * 10000;
-  return { salePrice, sellCost, capTax, netSale, initialEquity,
-           total: last.cum + netSale - initialEquity };
-}
-
-// ---------- 投資指標 ----------
-function irrOf(flows) {
-  const npv = (r) => flows.reduce((s, c, i) => s + c / Math.pow(1 + r, i), 0);
-  let lo = -0.95, hi = 2.0;
-  if (npv(lo) * npv(hi) > 0) return null; // 解なし(全期間赤字など)
-  for (let i = 0; i < 100; i++) {
-    const mid = (lo + hi) / 2;
-    if (npv(mid) > 0) lo = mid; else hi = mid;
-  }
-  return ((lo + hi) / 2) * 100;
-}
-
-function computeMetrics(q) {
-  const real = simulate(q, true);
-  const sale = saleAnalysis(q, real);
-  const y1 = real[0];
-  const flows = [-sale.initialEquity,
-    ...real.map((r, i) => r.cf + (i === real.length - 1 ? sale.netSale : 0))];
-  const irr = irrOf(flows);
-  const ccr = sale.initialEquity > 0 ? (y1.cf / sale.initialEquity) * 100 : null;
-  const noi1 = y1.income - y1.expense; // 営業純収益(初年度)
-  const dscr = y1.loanPaid > 0 ? noi1 / y1.loanPaid : null;
-  const firstDef = real.find((r) => r.cf < 0);
-  return {
-    irr, ccr, dscr,
-    firstDeficitYear: firstDef ? firstDef.year : null,
-    cumFinal: real[real.length - 1].cum,
-    total: sale.total, sale, real,
-  };
-}
-
-// 売却年を総当たりして「何年目に売るのが最適か」を算出
-function exitCurve(q) {
-  const real = simulate(q, true);
-  const initialEquity = (q.downPayment + q.price * (q.costsPct / 100)) * 10000;
-  const pts = [];
-  for (let y = 3; y <= q.simYears; y++) {
-    const r = real[y - 1];
-    const salePrice = q.saleMode === "yield"
-      ? (r.rentMonthly * 12) / Math.max(0.1, q.exitYieldPct / 100)
-      : q.price * 10000 * Math.pow(1 + q.priceTrendPct / 100, y);
-    const sellCost = salePrice * (q.sellCostPct / 100);
-    const book = q.price * 10000 - r.accumDep;
-    const capTax = q.capGainTaxOn
-      ? Math.max(0, salePrice - sellCost - book) * 0.20315 : 0;
-    const net = salePrice - sellCost - r.balance - capTax;
-    pts.push({ year: y, 総合損益: Math.round((r.cum + net - initialEquity) / 10000) });
-  }
-  return pts;
-}
 
 // ---------- UI pieces ----------
-function Field({ label, value, onChange, unit, step = 1, min, hint, help }) {
-  const [showHelp, setShowHelp] = useState(false);
-  return (
-    <label style={{ display: "block" }}>
-      <span style={{ fontSize: 12, color: T.sub, display: "flex", alignItems: "center",
-        gap: 5, marginBottom: 3 }}>
-        {label}
-        {help && (
-          <button type="button"
-            onClick={(e) => { e.preventDefault(); setShowHelp(!showHelp); }}
-            style={{ width: 16, height: 16, borderRadius: 8, border: `1px solid ${T.opt}`,
-              background: showHelp ? T.opt : "transparent", color: showHelp ? "#FFF" : T.opt,
-              fontSize: 10, lineHeight: "13px", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-            ?</button>
-        )}
-      </span>
-      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <input type="number" value={value} step={step} min={min}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          style={{ width: "100%", padding: "8px 10px", border: `1px solid ${T.line}`,
-            borderRadius: 6, fontSize: 15, color: T.ink, background: "#FBFCFD",
-            fontVariantNumeric: "tabular-nums" }} />
-        <span style={{ fontSize: 12, color: T.sub, whiteSpace: "nowrap" }}>{unit}</span>
-      </span>
-      {help && showHelp && (
-        <span style={{ fontSize: 11, color: T.aiInk, display: "block", marginTop: 4,
-          lineHeight: 1.65, background: T.aiBg, borderRadius: 6, padding: "6px 9px" }}>{help}</span>
-      )}
-      {hint && <span style={{ fontSize: 11, color: T.sub, display: "block", marginTop: 2 }}>{hint}</span>}
-    </label>
-  );
-}
+
 
 function Check({ label, checked, onChange }) {
   return (
@@ -247,18 +32,7 @@ function Check({ label, checked, onChange }) {
   );
 }
 
-function Select({ label, value, onChange, options }) {
-  return (
-    <label style={{ display: "block" }}>
-      <span style={{ fontSize: 12, color: T.sub, display: "block", marginBottom: 3 }}>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        style={{ width: "100%", padding: "8px 10px", border: `1px solid ${T.line}`,
-          borderRadius: 6, fontSize: 14, color: T.ink, background: "#FBFCFD" }}>
-        {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-      </select>
-    </label>
-  );
-}
+
 
 function Section({ no, title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -279,17 +53,7 @@ function Section({ no, title, children, defaultOpen = true }) {
   );
 }
 
-function Kpi({ label, value, color, sub }) {
-  return (
-    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
-      padding: "12px 14px", flex: "1 1 145px" }}>
-      <div style={{ fontSize: 11, color: T.sub, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 19, fontWeight: 700, color: color || T.ink,
-        fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: T.sub, marginTop: 3 }}>{sub}</div>}
-    </div>
-  );
-}
+
 
 // ---------- 永続ストレージ(汎用) ----------
 const KEY_RESEARCH = "market-research-records";
@@ -394,12 +158,7 @@ async function fetchMarketData(area, ptype, token) {
 }
 
 // ---------- タブ: 物件比較 ----------
-const cardSt = { background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
-  border: `1px solid ${T.line}`, marginBottom: 12 };
-const h2St = { fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
-  letterSpacing: "0.06em", borderBottom: `3px solid ${T.blue}`, paddingBottom: 6 };
-const btnSt = (bg) => ({ padding: "8px 16px", background: bg, color: "#FFF",
-  border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer" });
+
 
 function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDelete, onReport }) {
   const locked = plan !== "pro";
@@ -1568,23 +1327,7 @@ function cfAtYear(real, t) {
   return real[idx].cf;
 }
 
-function LockCard({ onUpgrade, label, children }) {
-  return (
-    <div style={{ position: "relative" }}>
-      <div style={{ filter: "blur(5px)", pointerEvents: "none", userSelect: "none",
-        opacity: 0.65 }}>{children}</div>
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", gap: 10 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: T.navy,
-          background: "rgba(255,255,255,.85)", padding: "6px 16px", borderRadius: 10 }}>
-          🔒 {label}はProプランの機能です</div>
-        <button onClick={onUpgrade} style={{ padding: "9px 22px", background: T.grad,
-          color: "#FFF", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700,
-          cursor: "pointer" }}>Proで開放する</button>
-      </div>
-    </div>
-  );
-}
+
 
 // ---------- 繰上返済・借り換えシミュレーター ----------
 function LoanLab({ p, actuals }) {

@@ -60,7 +60,9 @@ export default function LeadIntake({ onAdd }) {
   };
 
   const closeModal = () => {
+    const controller = fetchControllerRef.current;
     fetchControllerRef.current = null;
+    controller?.abort();
     setLoading(false);
     resetForm();
     setOpen(false);

@@ -62,9 +62,9 @@ export function Kpi({ label, value, color, sub }) {
 
 export const cardSt = { background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
   border: `1px solid ${T.line}`, marginBottom: 12 };
-const h2St = { fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
+export const h2St = { fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
   letterSpacing: "0.06em", borderBottom: `3px solid ${T.blue}`, paddingBottom: 6 };
-const btnSt = (bg) => ({ padding: "8px 16px", background: bg, color: "#FFF",
+export const btnSt = (bg) => ({ padding: "8px 16px", background: bg, color: "#FFF",
   border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer" });
 
 export function LockCard({ onUpgrade, label, children }) {

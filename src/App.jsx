@@ -8,6 +8,7 @@ import { supabase, authEnabled } from "./auth.js";
 import { T } from "./theme.js";
 import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
 import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
+import SashineLab from "./features/sashine.jsx";
 
 
 
@@ -2599,6 +2600,8 @@ export default function App() {
 
         {/* 信号機診断 */}
         <DiagnosisCard diag={diag} />
+        <SashineLab p={p} isPro={isPro}
+          onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))} />
 
         {/* かんたん入力 */}
         {mode === "easy" && (

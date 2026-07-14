@@ -43,6 +43,28 @@ export default function LeadIntake({ onAdd }) {
   const [message, setMessage] = useState(null);
   const [highlightPaste, setHighlightPaste] = useState(false);
   const pasteRef = useRef(null);
+  const fetchControllerRef = useRef(null);
+
+  const resetForm = () => {
+    setUrl("");
+    setPageText("");
+    setPreview(null);
+    setError("");
+    setMessage(null);
+    setHighlightPaste(false);
+  };
+
+  const openModal = () => {
+    resetForm();
+    setOpen(true);
+  };
+
+  const closeModal = () => {
+    fetchControllerRef.current = null;
+    setLoading(false);
+    resetForm();
+    setOpen(false);
+  };
 
   const guideToPaste = (reason = "") => {
     const prefix = reason ? reason + "。 " : "";
@@ -55,7 +77,9 @@ export default function LeadIntake({ onAdd }) {
   const fetchPreview = async () => {
     if (!url.trim()) { guideToPaste("URLを入力してください"); return; }
     setLoading(true); setError(""); setMessage(null);
+    fetchControllerRef.current?.abort();
     const controller = new AbortController();
+    fetchControllerRef.current = controller;
     const timer = window.setTimeout(() => controller.abort(), 7000);
     try {
       const response = await fetch("/api/lead-preview", {
@@ -77,10 +101,13 @@ export default function LeadIntake({ onAdd }) {
       });
       setHighlightPaste(false);
     } catch {
-      guideToPaste("");
+      if (fetchControllerRef.current === controller) guideToPaste("");
     } finally {
       window.clearTimeout(timer);
-      setLoading(false);
+      if (fetchControllerRef.current === controller) {
+        fetchControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -114,13 +141,15 @@ export default function LeadIntake({ onAdd }) {
     background: "#FBFCFD", color: T.ink };
 
   return (<>
-    <button type="button" onClick={() => setOpen(true)}
+    <button type="button" onClick={openModal}
       style={{ ...btnSt(T.teal), marginBottom: 12 }}>
       📥 ページから取り込み
     </button>
 
     {open && (
-      <div onClick={() => setOpen(false)}
+      <div onPointerDown={(e) => {
+        if (e.target === e.currentTarget) closeModal();
+      }}
         style={{ position: "fixed", inset: 0, background: "rgba(16,32,46,.48)",
           zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center",
           padding: 16 }}>
@@ -131,7 +160,7 @@ export default function LeadIntake({ onAdd }) {
           <div style={{ display: "flex", justifyContent: "space-between",
             alignItems: "center", gap: 12, marginBottom: 14 }}>
             <h3 style={{ margin: 0, fontSize: 16, color: T.navy }}>ページから取り込み</h3>
-            <button type="button" onClick={() => setOpen(false)} aria-label="閉じる"
+            <button type="button" onClick={closeModal} aria-label="閉じる"
               style={{ border: "none", background: "none", color: T.sub,
                 fontSize: 22, cursor: "pointer" }}>×</button>
           </div>

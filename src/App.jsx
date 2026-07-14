@@ -9,6 +9,7 @@ import { T } from "./theme.js";
 import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
 import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
 import SashineLab from "./features/sashine.jsx";
+import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
 
 
 
@@ -1576,6 +1577,7 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
   return (
     <section style={cardSt}>
       <h2 style={h2St}>検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
+      <LeadIntake onAdd={onAdd} />
       <div style={{ display: "grid", gap: 8,
         gridTemplateColumns: "1.4fr 1.6fr 0.8fr 0.9fr", alignItems: "end" }}>
         <label style={{ fontSize: 11.5, color: T.sub }}>物件名・目印*
@@ -1627,12 +1629,28 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
                   {l.memo && <div style={{ fontSize: 11.5, color: T.sub, overflow: "hidden",
                     textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.memo}</div>}
                 </div>
-                <div style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums",
-                  flex: "1 1 170px" }} className="num">
-                  {l.price > 0 ? <b>{l.price.toLocaleString()}万円</b> : <span style={{ color: T.sub }}>価格未定</span>}
-                  {l.rent > 0 && <> ／ {l.rent.toLocaleString()}円</>}
+                <div style={{ display: "flex", alignItems: "center", gap: 6,
+                  flex: "1 1 250px", flexWrap: "wrap" }} className="num">
+                  <label style={{ fontSize: 10.5, color: T.sub }}>価格
+                    <input type="number" min={0} defaultValue={l.price || ""}
+                      aria-label={l.name + "の価格（万円）"}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      onBlur={(e) => onUpdate(l.id,
+                        { price: Math.max(0, Number(e.target.value) || 0) })}
+                      style={{ ...inSt, width: 82, marginLeft: 3, padding: "5px 6px" }} />
+                  </label>
+                  <span style={{ fontSize: 11, color: T.sub }}>万円</span>
+                  <label style={{ fontSize: 10.5, color: T.sub }}>家賃
+                    <input type="number" min={0} defaultValue={l.rent || ""}
+                      aria-label={l.name + "の家賃（円）"}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      onBlur={(e) => onUpdate(l.id,
+                        { rent: Math.max(0, Number(e.target.value) || 0) })}
+                      style={{ ...inSt, width: 92, marginLeft: 3, padding: "5px 6px" }} />
+                  </label>
+                  <span style={{ fontSize: 11, color: T.sub }}>円</span>
                   {gross != null && (
-                    <span style={{ marginLeft: 8, fontWeight: 700,
+                    <span style={{ fontSize: 12, fontWeight: 700,
                       color: gross < 4 ? T.real : gross < 5.5 ? T.warnInk : T.good }}>
                       表面{gross.toFixed(2)}%</span>)}
                 </div>
@@ -2333,7 +2351,9 @@ export default function App() {
     loadKey(KEY_PROPS, []).then(setProperties);
     loadKey(KEY_ACTUALS, null).then((a) =>
       setActuals(a || { startYear: new Date().getFullYear(), items: [] }));
-    loadKey(KEY_LEADS, []).then(setLeads);
+    loadKey(KEY_LEADS, []).then((items) => {
+      setLeads(items); setLeadsReady(true);
+    });
     loadKey("ui-mode", "easy").then(setMode);
     setStorageNote(authEnabled && !user
       ? "ログインすると、保存データ(リサーチ・物件・予実)がアカウントに保存され、他の端末からも利用できます"
@@ -2357,6 +2377,9 @@ export default function App() {
     setTab("sim");
   };
   const [leads, setLeads] = useState([]);
+  const [leadsReady, setLeadsReady] = useState(false);
+  const [leadToast, setLeadToast] = useState(null);
+  const leadIntakeDone = useRef(false);
 
   const addLead = async (lead) => {
     const cap = isPro ? 50 : 5;
@@ -2370,6 +2393,36 @@ export default function App() {
     setLeads(await saveKey(KEY_LEADS, [rec, ...leads], 50));
     return { ok: true };
   };
+  // 将来のブラウザ拡張用の入口。削除しないこと
+  useEffect(() => {
+    if (!leadsReady || leadIntakeDone.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const encoded = url.searchParams.get("lead");
+    leadIntakeDone.current = true;
+    if (!encoded) return;
+
+    (async () => {
+      try {
+        const lead = decodeLeadPayload(encoded);
+        const result = await addLead(lead);
+        setLeadToast(result.ok
+          ? { ok: true, msg: `検討候補トレイに「${lead.name}」を追加しました` }
+          : { ok: false, msg: result.msg });
+      } catch {
+        setLeadToast({ ok: false, msg: "ページ取り込みデータを読み取れませんでした" });
+      } finally {
+        url.searchParams.delete("lead");
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      }
+    })();
+  }, [leadsReady]);
+
+  useEffect(() => {
+    if (!leadToast) return;
+    const timer = window.setTimeout(() => setLeadToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [leadToast]);
+
   const updateLead = async (id, patch) =>
     setLeads(await saveKey(KEY_LEADS,
       leads.map((l) => (l.id === id ? { ...l, ...patch } : l)), 50));
@@ -2487,6 +2540,15 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: T.bg, color: T.ink,
       fontFamily: '"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif',
       padding: "16px 12px 40px" }}>
+      {leadToast && (
+        <div role="status" style={{ position: "fixed", top: 16, right: 16, zIndex: 1200,
+          maxWidth: 360, padding: "11px 14px", borderRadius: 10, color: "#FFF",
+          background: leadToast.ok ? T.good : T.real,
+          boxShadow: "0 10px 28px rgba(16,32,46,.22)", fontSize: 12.5,
+          lineHeight: 1.6, fontWeight: 700 }}>
+          {leadToast.msg}
+        </div>
+      )}
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
 
         <header style={{ marginBottom: 16 }}>

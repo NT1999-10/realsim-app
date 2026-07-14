@@ -9,7 +9,7 @@ import { T } from "./theme.js";
 import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
 import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
 import SashineLab from "./features/sashine.jsx";
-import BookmarkletSetup, { decodeLeadPayload } from "./features/bookmarklet.jsx";
+import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
 
 
 
@@ -1577,7 +1577,7 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
   return (
     <section style={cardSt}>
       <h2 style={h2St}>検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
-      <BookmarkletSetup />
+      <LeadIntake onAdd={onAdd} />
       <div style={{ display: "grid", gap: 8,
         gridTemplateColumns: "1.4fr 1.6fr 0.8fr 0.9fr", alignItems: "end" }}>
         <label style={{ fontSize: 11.5, color: T.sub }}>物件名・目印*
@@ -2393,6 +2393,7 @@ export default function App() {
     setLeads(await saveKey(KEY_LEADS, [rec, ...leads], 50));
     return { ok: true };
   };
+  // 将来のブラウザ拡張用の入口。削除しないこと
   useEffect(() => {
     if (!leadsReady || leadIntakeDone.current || typeof window === "undefined") return;
     const url = new URL(window.location.href);
@@ -2408,7 +2409,7 @@ export default function App() {
           ? { ok: true, msg: `検討候補トレイに「${lead.name}」を追加しました` }
           : { ok: false, msg: result.msg });
       } catch {
-        setLeadToast({ ok: false, msg: "ブックマークレットの取り込みデータを読み取れませんでした" });
+        setLeadToast({ ok: false, msg: "ページ取り込みデータを読み取れませんでした" });
       } finally {
         url.searchParams.delete("lead");
         window.history.replaceState({}, "", url.pathname + url.search + url.hash);

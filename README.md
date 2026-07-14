@@ -47,7 +47,7 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
 
 ### 3. 国土交通省 不動産情報ライブラリAPI
 
-1. [不動産情報ライブラリ API利用申請](https://www.reinfolib.mlit.go.jp/api-auth/)から利用申請
+1. [不動産情報ライブラリ API利用申請](https://www.reinfolib.mlit.go.jp/api/request/)から利用申請
 2. 発行されたAPIキーをVercelの `MLIT_API_KEY` に設定
 3. `supabase/schema_v3_market.sql` を実行後、再デプロイ
 

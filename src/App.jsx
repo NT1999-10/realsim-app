@@ -1629,12 +1629,28 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
                   {l.memo && <div style={{ fontSize: 11.5, color: T.sub, overflow: "hidden",
                     textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.memo}</div>}
                 </div>
-                <div style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums",
-                  flex: "1 1 170px" }} className="num">
-                  {l.price > 0 ? <b>{l.price.toLocaleString()}万円</b> : <span style={{ color: T.sub }}>価格未定</span>}
-                  {l.rent > 0 && <> ／ {l.rent.toLocaleString()}円</>}
+                <div style={{ display: "flex", alignItems: "center", gap: 6,
+                  flex: "1 1 250px", flexWrap: "wrap" }} className="num">
+                  <label style={{ fontSize: 10.5, color: T.sub }}>価格
+                    <input type="number" min={0} defaultValue={l.price || ""}
+                      aria-label={l.name + "の価格（万円）"}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      onBlur={(e) => onUpdate(l.id,
+                        { price: Math.max(0, Number(e.target.value) || 0) })}
+                      style={{ ...inSt, width: 82, marginLeft: 3, padding: "5px 6px" }} />
+                  </label>
+                  <span style={{ fontSize: 11, color: T.sub }}>万円</span>
+                  <label style={{ fontSize: 10.5, color: T.sub }}>家賃
+                    <input type="number" min={0} defaultValue={l.rent || ""}
+                      aria-label={l.name + "の家賃（円）"}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      onBlur={(e) => onUpdate(l.id,
+                        { rent: Math.max(0, Number(e.target.value) || 0) })}
+                      style={{ ...inSt, width: 92, marginLeft: 3, padding: "5px 6px" }} />
+                  </label>
+                  <span style={{ fontSize: 11, color: T.sub }}>円</span>
                   {gross != null && (
-                    <span style={{ marginLeft: 8, fontWeight: 700,
+                    <span style={{ fontSize: 12, fontWeight: 700,
                       color: gross < 4 ? T.real : gross < 5.5 ? T.warnInk : T.good }}>
                       表面{gross.toFixed(2)}%</span>)}
                 </div>

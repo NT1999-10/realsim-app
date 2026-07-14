@@ -44,27 +44,29 @@ export default function LeadIntake({ onAdd }) {
   const [highlightPaste, setHighlightPaste] = useState(false);
   const pasteRef = useRef(null);
   const fetchControllerRef = useRef(null);
+  const downOnBg = useRef(false);
 
-  const resetForm = () => {
+  const resetIntake = () => {
+    const controller = fetchControllerRef.current;
+    fetchControllerRef.current = null;
+    controller?.abort();
     setUrl("");
     setPageText("");
     setPreview(null);
     setError("");
+    setLoading(false);
     setMessage(null);
     setHighlightPaste(false);
+    downOnBg.current = false;
   };
 
-  const openModal = () => {
-    resetForm();
+  const openIntake = () => {
+    resetIntake();
     setOpen(true);
   };
 
-  const closeModal = () => {
-    const controller = fetchControllerRef.current;
-    fetchControllerRef.current = null;
-    controller?.abort();
-    setLoading(false);
-    resetForm();
+  const closeIntake = () => {
+    resetIntake();
     setOpen(false);
   };
 
@@ -133,9 +135,11 @@ export default function LeadIntake({ onAdd }) {
       rent: Math.max(0, Number(preview.rent) || 0),
       memo: "",
     });
-    setMessage(result.ok
-      ? { ok: true, text: "検討候補トレイに追加しました" }
-      : { ok: false, text: result.msg });
+    if (result.ok) {
+      closeIntake();
+      return;
+    }
+    setMessage({ ok: false, text: result.msg });
   };
 
   const inputStyle = { width: "100%", padding: "8px 10px",
@@ -143,26 +147,29 @@ export default function LeadIntake({ onAdd }) {
     background: "#FBFCFD", color: T.ink };
 
   return (<>
-    <button type="button" onClick={openModal}
+    <button type="button" onClick={openIntake}
       style={{ ...btnSt(T.teal), marginBottom: 12 }}>
       📥 ページから取り込み
     </button>
 
     {open && (
-      <div onPointerDown={(e) => {
-        if (e.target === e.currentTarget) closeModal();
-      }}
+      <div
+        onMouseDown={(e) => { downOnBg.current = e.target === e.currentTarget; }}
+        onMouseUp={(e) => {
+          if (downOnBg.current && e.target === e.currentTarget) closeIntake();
+          downOnBg.current = false;
+        }}
         style={{ position: "fixed", inset: 0, background: "rgba(16,32,46,.48)",
           zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center",
           padding: 16 }}>
-        <div onClick={(e) => e.stopPropagation()}
+        <div onMouseDown={(e) => e.stopPropagation()}
           style={{ width: "min(660px,100%)", maxHeight: "90vh", overflowY: "auto",
             background: "#FFF", borderRadius: 16, padding: 20,
             boxShadow: "0 22px 60px rgba(16,32,46,.24)" }}>
           <div style={{ display: "flex", justifyContent: "space-between",
             alignItems: "center", gap: 12, marginBottom: 14 }}>
             <h3 style={{ margin: 0, fontSize: 16, color: T.navy }}>ページから取り込み</h3>
-            <button type="button" onClick={closeModal} aria-label="閉じる"
+            <button type="button" onClick={closeIntake} aria-label="閉じる"
               style={{ border: "none", background: "none", color: T.sub,
                 fontSize: 22, cursor: "pointer" }}>×</button>
           </div>

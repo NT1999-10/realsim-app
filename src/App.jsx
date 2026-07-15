@@ -9,6 +9,7 @@ import { T } from "./theme.js";
 import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
 import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
 import SashineLab from "./features/sashine.jsx";
+import SoubaCheck from "./features/souba.jsx";
 import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
 
 
@@ -2663,6 +2664,8 @@ export default function App() {
         {/* 信号機診断 */}
         <DiagnosisCard diag={diag} />
         <SashineLab p={p} isPro={isPro}
+          onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))} />
+        <SoubaCheck p={p} isPro={isPro}
           onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))} />
 
         {/* かんたん入力 */}

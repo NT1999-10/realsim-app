@@ -48,15 +48,24 @@ async function fetchBytes(url, options, t0) {
   }
 }
 
+function decodeBufferText(buffer) {
+  return buffer[0] === 0x1f && buffer[1] === 0x8b
+    ? zlib.gunzipSync(buffer).toString("utf8")
+    : buffer.toString("utf8");
+}
+
+function responsePreview(buffer) {
+  try { return decodeBufferText(buffer).slice(0, 300); }
+  catch { return buffer.toString("utf8").slice(0, 300); }
+}
+
 function parseJsonBuffer(buffer) {
   let text = "";
   try {
-    text = buffer[0] === 0x1f && buffer[1] === 0x8b
-      ? zlib.gunzipSync(buffer).toString("utf8")
-      : buffer.toString("utf8");
+    text = decodeBufferText(buffer);
     return { data: JSON.parse(text), text };
   } catch {
-    throw new StageError("parse", "API応答の解析に失敗しました", text || buffer.toString("utf8"));
+    throw new StageError("parse", "API応答の解析に失敗しました", text || responsePreview(buffer));
   }
 }
 
@@ -171,7 +180,7 @@ async function writeMarketCache(key, payload, t0) {
 
 async function fetchMlit(endpoint, params, apiKey, t0, stage) {
   const query = new URLSearchParams(params);
-  const { response, data, text } = await fetchJson(
+  const { response, buffer } = await fetchBytes(
     `${MLIT_BASE}/${endpoint}?${query}`, {
       headers: {
         "Ocp-Apim-Subscription-Key": apiKey,
@@ -179,11 +188,14 @@ async function fetchMlit(endpoint, params, apiKey, t0, stage) {
         Accept: "application/json",
       },
     }, t0);
+  const preview = responsePreview(buffer);
 
   if (response.status === 401 || response.status === 403) {
-    console.log("[market-price] MLIT auth failure", text.slice(0, 300));
-    throw new StageError("auth", "国交省APIの認証に失敗しました", text);
+    console.log("[market-price] MLIT auth failure", preview);
+    throw new StageError("auth", "国交省APIの認証に失敗しました", preview);
   }
+
+  const { data, text } = parseJsonBuffer(buffer);
   if (!response.ok || !data || (data.status && data.status !== "OK")) {
     console.log(`[market-price] ${endpoint} failure`, text.slice(0, 300));
     throw new StageError(stage, "国交省APIからデータを取得できませんでした", text);

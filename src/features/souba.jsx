@@ -27,6 +27,15 @@ const TYPE_OPTIONS = [
   { v: "land", l: "土地" },
 ];
 
+const STAGE_ERRORS = {
+  auth: "APIキーが未設定または無効です(Vercelの環境変数 MLIT_API_KEY を確認してください)",
+  xit002: "市区町村が見つかりませんでした。表記(例: 文京区)をご確認ください",
+  empty: "この地域・種別の取引データが見つかりませんでした。種別や市区町村を変えてお試しください",
+  timeout: "データ取得に時間がかかっています。時間をおいて再度お試しください",
+  parse: "データの取得に失敗しました。時間をおいて再度お試しください",
+  other: "データの取得に失敗しました。時間をおいて再度お試しください",
+};
+
 const inputStyle = {
   width: "100%", padding: "8px 10px", border: `1px solid ${T.line}`,
   borderRadius: 6, fontSize: 14, color: T.ink, background: "#FBFCFD",
@@ -64,9 +73,9 @@ async function requestMarketPrice(body) {
     body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok || !data || data.error) {
-    throw new Error(data && data.error
-      ? data.error : "相場データを取得できませんでした");
+  if (!data || data.ok !== true) {
+    const stage = data && data.stage;
+    throw new Error(STAGE_ERRORS[stage] || STAGE_ERRORS.other);
   }
   return data;
 }
@@ -149,7 +158,7 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
     <section style={cardSt}>
       <h2 style={h2St}>国交省データで相場照合</h2>
       <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7, marginBottom: 12 }}>
-        国土交通省の直近2年の成約・取引事例から、対象物件の㎡単価を照合します。
+        国土交通省の直近の取引事例(データ整備済みの過去3年分)から、対象物件の㎡単価を照合します。
       </div>
 
       <div style={{ display: "grid", gap: 12,
@@ -187,7 +196,7 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
         <div style={{ marginTop: 16 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Kpi label="成約・取引事例" value={result.count.toLocaleString() + "件"}
-              sub={`${result.city.name}・直近2年`} />
+              sub={`${result.city.name}・対象年 ${(result.years || []).join("・")}`} />
             <Kpi label="中央値単価" value={unitMan(result.medianUnitYenPerM2)}
               sub={`25–75%: ${unitMan(result.p25)}〜${unitMan(result.p75)}`} />
             <Kpi label="対象物件の単価" value={unitMan(targetUnit)}

@@ -33,6 +33,7 @@ const inputStyle = {
 };
 
 const unitMan = (value) => {
+  if (value == null || value === "") return "—";
   const number = Number(value);
   return Number.isFinite(number) ? (number / 10000).toFixed(1) + "万円/㎡" : "—";
 };
@@ -103,6 +104,11 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
     : null;
   const verdict = evaluateDeviation(deviation);
 
+  const clearResult = () => {
+    setResult(null);
+    setError("");
+  };
+
   const chartSamples = useMemo(() => {
     if (!result || !Array.isArray(result.samples)) return [];
     return result.samples
@@ -148,15 +154,18 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
 
       <div style={{ display: "grid", gap: 12,
         gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
-        <Select label="都道府県" value={pref} onChange={setPref} options={PREFECTURES} />
+        <Select label="都道府県" value={pref}
+          onChange={(value) => { setPref(value); clearResult(); }} options={PREFECTURES} />
         <label style={{ display: "block" }}>
           <span style={{ fontSize: 12, color: T.sub, display: "block", marginBottom: 3 }}>
             市区町村
           </span>
-          <input type="text" value={cityName} onChange={(e) => setCityName(e.target.value)}
+          <input type="text" value={cityName}
+            onChange={(e) => { setCityName(e.target.value); clearResult(); }}
             placeholder="例: 文京区" style={inputStyle} />
         </label>
-        <Select label="種別" value={type} onChange={setType} options={TYPE_OPTIONS} />
+        <Select label="種別" value={type}
+          onChange={(value) => { setType(value); clearResult(); }} options={TYPE_OPTIONS} />
         <Field label="専有面積" value={area} onChange={setArea}
           unit="㎡" step={0.1} min={1} />
       </div>
@@ -191,7 +200,8 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
             <div style={{ fontSize: 11.5, color: T.sub }}>中央値からの乖離</div>
             <div style={{ fontSize: 30, lineHeight: 1.3, fontWeight: 800,
               color: verdict.color, fontVariantNumeric: "tabular-nums" }}>
-              {deviation >= 0 ? "+" : ""}{deviation.toFixed(1)}%
+              {deviation == null
+                ? "—" : `${deviation >= 0 ? "+" : ""}${deviation.toFixed(1)}%`}
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: verdict.color }}>
               {verdict.label}
@@ -210,7 +220,8 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
                 <Tooltip content={<MarketTooltip />} />
                 <Scatter name="成約事例" data={chartSamples} fill={T.blue} opacity={0.68} />
                 <Scatter name="対象物件"
-                  data={[{ area: Number(area), unit: targetUnit, target: true }]}
+                  data={targetUnit == null
+                    ? [] : [{ area: Number(area), unit: targetUnit, target: true }]}
                   fill={T.real} shape="diamond" />
               </ScatterChart>
             </ResponsiveContainer>

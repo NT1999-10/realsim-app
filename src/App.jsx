@@ -10,6 +10,7 @@ import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
 import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
 import SashineLab from "./features/sashine.jsx";
 import SoubaCheck from "./features/souba.jsx";
+import AuctionTab, { followRecord } from "./features/auction.jsx";
 import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
 
 
@@ -113,7 +114,10 @@ async function loadKey(key, fallback) {
 }
 
 const KEY_LEADS = "candidate-leads";
-const SYNCED_KEYS = [KEY_RESEARCH, KEY_PROPS, KEY_ACTUALS, KEY_LEADS, "ui-mode"];
+const KEY_AUCTION_SEARCH = "auction-search";
+const KEY_AUCTION_FOLLOW = "auction-follow";
+const SYNCED_KEYS = [KEY_RESEARCH, KEY_PROPS, KEY_ACTUALS, KEY_LEADS,
+  KEY_AUCTION_SEARCH, KEY_AUCTION_FOLLOW, "ui-mode"];
 function purgeLocalMirror() {
   try {
     for (const k of SYNCED_KEYS) localStorage.removeItem("rs-" + k);
@@ -1461,7 +1465,7 @@ function LoanLab({ p, actuals }) {
 }
 
 // ---------- 設備・イベントカレンダー ----------
-function EventCalendar({ p, actuals, persist }) {
+function EventCalendar({ p, actuals, persist, extraEvents = [] }) {
   const nowY = new Date().getFullYear(), nowM = new Date().getMonth() + 1;
   const custom = actuals.events || [];
   const [f, setF] = useState({
@@ -1497,10 +1501,12 @@ function EventCalendar({ p, actuals, persist }) {
         }
       }
       custom.filter((e) => e.month === key).forEach((e) => evs.push({ ...e, auto: false }));
+      extraEvents.filter((e) => e.month === key)
+        .forEach((e) => evs.push({ ...e, auto: true, auction: true }));
       out.push({ key, y, m, evs });
     }
     return out;
-  }, [p, custom]);
+  }, [p, custom, extraEvents]);
 
   const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
     fontSize: 13, background: "#FBFCFD", color: T.ink };
@@ -1531,8 +1537,10 @@ function EventCalendar({ p, actuals, persist }) {
               : evs.map((e, i) => (
                 <span key={e.id || key + i} style={{ fontSize: 12, padding: "4px 12px",
                   borderRadius: 12, display: "inline-flex", gap: 6, alignItems: "center",
-                  background: e.auto ? "rgba(45,125,210,.08)" : "rgba(43,184,163,.1)",
-                  border: e.auto ? "1px solid rgba(45,125,210,.25)" : "1px solid rgba(43,184,163,.35)",
+                  background: e.auction ? "rgba(218,145,0,.10)"
+                    : e.auto ? "rgba(45,125,210,.08)" : "rgba(43,184,163,.1)",
+                  border: e.auction ? "1px solid rgba(218,145,0,.35)"
+                    : e.auto ? "1px solid rgba(45,125,210,.25)" : "1px solid rgba(43,184,163,.35)",
                   color: T.ink }} className="num">
                   {e.label}{e.amount > 0 && <b>{e.amount.toLocaleString()}円</b>}
                   {!e.auto && (
@@ -1544,7 +1552,8 @@ function EventCalendar({ p, actuals, persist }) {
         </div>
       ))}
       <div style={{ fontSize: 11.5, color: T.sub, marginTop: 10 }}>
-        青いチップは物件パラメータからの自動生成(固定資産税の納期は自治体により異なります。目安として一般的な4期を表示)。
+        青いチップは物件パラメータからの自動生成、琥珀のチップはフォロー中の競売日程です
+        (固定資産税の納期は自治体により異なります。目安として一般的な4期を表示)。
         緑のチップは手動追加の予定です。設備の交換年は下ではなく上の設備台帳の設置年から計算しています。
       </div>
     </section>
@@ -2339,19 +2348,22 @@ export default function App() {
   useEffect(() => {
     const settled = !authEnabled || !user || profile !== null; // プラン確定を待つ
     if (settled && !isPro) {
-      if (tab === "ana" || tab === "ops") setTab("sim");
+      if (tab === "ana" || tab === "ops" || tab === "auc") setTab("sim");
       if (mode === "pro") setMode("easy");
     }
   }, [isPro, user, profile, tab, mode]);
   const [records, setRecords] = useState([]);
   const [properties, setProperties] = useState([]);
   const [actuals, setActuals] = useState({ startYear: new Date().getFullYear(), items: [] });
+  const [auctionFollows, setAuctionFollows] = useState([]);
+  const [auctionBidRequest, setAuctionBidRequest] = useState(0);
   const [storageNote, setStorageNote] = useState("");
   useEffect(() => {
     loadKey(KEY_RESEARCH, []).then(setRecords);
     loadKey(KEY_PROPS, []).then(setProperties);
     loadKey(KEY_ACTUALS, null).then((a) =>
       setActuals(a || { startYear: new Date().getFullYear(), items: [] }));
+    loadKey(KEY_AUCTION_FOLLOW, []).then(setAuctionFollows);
     loadKey(KEY_LEADS, []).then((items) => {
       setLeads(items); setLeadsReady(true);
     });
@@ -2435,6 +2447,43 @@ export default function App() {
       rent: l.rent > 0 ? l.rent : s.rent }));
     setTab("sim");
   };
+
+  const toggleAuctionFollow = async (item) => {
+    const exists = auctionFollows.some((follow) => follow.id === item.id);
+    const next = exists
+      ? auctionFollows.filter((follow) => follow.id !== item.id)
+      : [followRecord(item), ...auctionFollows];
+    setAuctionFollows(await saveKey(KEY_AUCTION_FOLLOW, next, 100));
+  };
+
+  const simulateAuction = (item) => {
+    const priceMan = Number(item.min_price) / 10000;
+    if (Number.isFinite(priceMan) && priceMan > 0) {
+      setP((current) => ({ ...current, price: priceMan }));
+    }
+    setArea([item.pref, item.city].filter(Boolean).join(""));
+    setPtype(item.type === "マンション"
+      ? "中古区分マンション" : item.type === "戸建て" ? "中古戸建て" : item.type || "競売物件");
+    setAuctionBidRequest((value) => value + 1);
+    setTab("sim");
+  };
+
+  const auctionCalendarEvents = useMemo(() => auctionFollows.flatMap((item) => {
+    const place = [item.pref, item.city].filter(Boolean).join("") || "所在地未登録";
+    return [
+      ["bid_start", "入札開始"], ["bid_end", "入札終了"], ["open_date", "開札日"],
+    ].flatMap(([field, label]) => {
+      const date = item[field];
+      if (!date || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return [];
+      const md = date.slice(5).replace("-", "/");
+      return [{
+        id: "auction-" + item.id + "-" + field,
+        month: date.slice(0, 7),
+        label: "競売 " + label + " " + place + " (" + md + ")",
+        amount: 0,
+      }];
+    });
+  }), [auctionFollows]);
 
   const updateProperty = async (id, patch) => {
     const next = properties.map((r) => (r.id === id ? { ...r, ...patch } : r));
@@ -2616,7 +2665,8 @@ export default function App() {
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {[["home", "ホーム", true], ["sim", "シミュレーション", true],
             ["cmp", "物件比較", true],
-            ["ana", "分析", isPro], ["ops", "運用管理", isPro]]
+            ["ana", "分析", isPro], ["ops", "運用管理", isPro],
+            ["auc", "競売", isPro]]
             .map(([k, l, ok]) => (
             <button key={k} onClick={() => (ok ? setTab(k) : setUpgradeOpen(true))} style={{
               padding: "8px 16px", borderRadius: 18, fontSize: 13, fontWeight: 700,
@@ -2635,7 +2685,9 @@ export default function App() {
             actuals={actuals} isPro={isPro}
             onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))}
             goTab={(k) => {
-              if ((k === "ops" || k === "ana") && !isPro) { setUpgradeOpen(true); return; }
+              if ((k === "ops" || k === "ana" || k === "auc") && !isPro) {
+                setUpgradeOpen(true); return;
+              }
               setTab(k);
             }} />
         )}
@@ -2663,7 +2715,7 @@ export default function App() {
 
         {/* 信号機診断 */}
         <DiagnosisCard diag={diag} />
-        <SashineLab p={p} isPro={isPro}
+        <SashineLab p={p} isPro={isPro} auctionRequest={auctionBidRequest}
           onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))} />
         <SoubaCheck p={p} isPro={isPro}
           onUpgrade={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))} />
@@ -3043,8 +3095,13 @@ export default function App() {
           <>
             <OpsTab p={p} setP={setP} actuals={actuals} persist={persistActuals} />
             <LoanLab p={p} actuals={actuals} />
-            <EventCalendar p={p} actuals={actuals} persist={persistActuals} />
+            <EventCalendar p={p} actuals={actuals} persist={persistActuals}
+              extraEvents={auctionCalendarEvents} />
           </>
+        )}
+        {tab === "auc" && isPro && (
+          <AuctionTab follows={auctionFollows} onToggleFollow={toggleAuctionFollow}
+            onBid={simulateAuction} loadData={loadKey} saveData={saveKey} />
         )}
 
         <footer style={{ background: T.warnBg, border: `1px solid #E8D9BC`, borderRadius: 10,

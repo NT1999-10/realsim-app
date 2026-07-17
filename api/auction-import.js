@@ -228,24 +228,72 @@ async function upsertBatch(rows) {
   }
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "POSTのみ受け付けます" });
+async function recentItems() {
+  const url = process.env.SUPABASE_URL;
+  const headers = serviceHeaders();
+  if (!url || !headers) throw new Error("サーバー設定が不足しています");
+  const query = new URLSearchParams({
+    select: "id,pref,city,address,type,min_price,bid_end,active,updated_at",
+    order: "updated_at.desc",
+    limit: "20",
+  });
+  const response = await fetch(url + "/rest/v1/auction_items?" + query, { headers });
+  const rows = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(rows)) {
+    throw new Error("登録済みデータを取得できませんでした");
   }
+  return rows;
+}
 
-  const allowed = adminEmails();
-  if (!allowed.size) {
-    return res.status(501).json({ error: "ADMIN_EMAILSが未設定です" });
+async function deactivateItem(id) {
+  const value = String(id || "").trim();
+  if (!value || value.length > 300) throw new Error("物件IDが正しくありません");
+  const url = process.env.SUPABASE_URL;
+  const headers = serviceHeaders();
+  if (!url || !headers) throw new Error("サーバー設定が不足しています");
+  const response = await fetch(
+    url + "/rest/v1/auction_items?id=eq." + encodeURIComponent(value), {
+      method: "PATCH",
+      headers: { ...headers, Prefer: "return=minimal" },
+      body: JSON.stringify({ active: false, updated_at: new Date().toISOString() }),
+    });
+  if (!response.ok) throw new Error("物件を無効化できませんでした");
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.setHeader("Allow", "GET, POST");
+    return res.status(405).json({ error: "GETまたはPOSTのみ受け付けます" });
   }
 
   const who = await getUser(req);
   if (who.error) return res.status(who.status).json({ error: who.error });
-  if (!allowed.has(who.email)) {
+  const allowed = adminEmails();
+  const isAdmin = allowed.size > 0 && allowed.has(who.email);
+
+  if (req.method === "GET") {
+    if (!isAdmin) return res.status(200).json({ isAdmin: false });
+    try {
+      return res.status(200).json({ isAdmin: true, items: await recentItems() });
+    } catch (error) {
+      return res.status(502).json({ error: String(error && error.message || error) });
+    }
+  }
+
+  if (!allowed.size) {
+    return res.status(501).json({ error: "ADMIN_EMAILSが未設定です" });
+  }
+  if (!isAdmin) {
     return res.status(403).json({ error: "競売CSVの取り込み権限がありません" });
   }
 
   try {
+    if (req.body && typeof req.body === "object" && req.body.action === "deactivate") {
+      await deactivateItem(req.body.id);
+      console.log("[auction-import] admin=" + who.email + " deactivated=" + req.body.id);
+      return res.status(200).json({ ok: true, deactivated: req.body.id });
+    }
+
     const rows = rowsFromCsv(csvBody(req));
     for (let index = 0; index < rows.length; index += BATCH_SIZE) {
       await upsertBatch(rows.slice(index, index + BATCH_SIZE));

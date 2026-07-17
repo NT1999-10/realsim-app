@@ -15,8 +15,8 @@ Vercel /api/research ──検証──▶ Supabase DB ◀──plan更新──
       ▼                              │ market_cache(7日)
 Anthropic API              /api/market-price ──▶ 国交省 不動産情報ライブラリAPI
       │                              │
-      └──── /api/auction-import ─────▶ auction_items
-             (管理者CSV・service role)
+      └──── /api/auction-import ─────▶ auction_items ◀──── /api/auction-list
+             (管理者CSV・service role)                  (JWT・Pro限定)
 (キーはサーバー側のみ)
 ```
 
@@ -24,6 +24,7 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
 - **プランはDBが正**。端末が変わってもログインすれば同じプラン・同じクオータ
 - **AI調査はサーバー側でJWT検証+Pro確認+月10回制限を強制**(直叩き対策済み)
 - **相場照合APIはJWT検証+Pro確認+1ユーザー30回/日制限を強制**。国交省APIキーはサーバー側だけに保持
+- **競売一覧APIはJWT検証+Pro確認を強制**。RLSを維持したままservice roleで有効物件だけを返す
 - Supabase環境変数が未設定の場合は従来のライセンスキー方式で動作(段階移行可能)
 
 ## セットアップフロー
@@ -83,6 +84,11 @@ id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_
 - 1回最大1,000件。同一 `id` は更新し、初回登録日時は保持
 - 認証なしは401、許可メール以外は403、`ADMIN_EMAILS` 未設定は501
 
+Proユーザーはアプリの「競売」タブから `POST /api/auction-list` を利用します。
+都道府県・種別・基準価額上限で検索でき、フォローした物件の入札開始・終了・開札日は
+運用管理のイベントカレンダーへ自動表示されます。「入札上限を計算」から
+シミュレーションへ基準価額を反映し、SashineLabを競売モードで開けます。
+
 ### 5. Stripe(約15分)
 1. https://stripe.com でアカウント作成 → 商品「現実派 Pro」月額¥1,480のサブスクを作成
 2. Payment Link を発行 → URLを `src/plan.js` の `PURCHASE_URL` に設定
@@ -99,6 +105,7 @@ id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_
 5. `POST /api/market-price` をProユーザーのJWT付きで実行し、Supabaseの
    `market_cache` に結果が保存されることを確認
 6. 管理者JWT付きで `POST /api/auction-import` を実行し、`auction_items` に結果が保存されることを確認
+7. Proユーザーで競売タブを検索し、BITリンク・入札上限計算・フォロー日程のカレンダー表示を確認
 
 ## ユーザーから見た流れ
 

@@ -14,6 +14,9 @@ Vercel /api/research ──検証──▶ Supabase DB ◀──plan更新──
       │                              ▲
       ▼                              │ market_cache(7日)
 Anthropic API              /api/market-price ──▶ 国交省 不動産情報ライブラリAPI
+      │                              │
+      └──── /api/auction-import ─────▶ auction_items
+             (管理者CSV・service role)
 (キーはサーバー側のみ)
 ```
 
@@ -30,6 +33,7 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
 2. 左メニュー SQL Editorで次のSQLを順に実行:
    - `supabase/schema.sql` — 認証・ユーザーデータの基本テーブル
    - `supabase/schema_v3_market.sql` — 相場照合の7日キャッシュ(既存環境への追加分)
+   - `supabase/schema_v4_auction.sql` — 競売物件データ(既存環境への追加分)
 3. Settings → API で以下を控える:
    - Project URL → `VITE_SUPABASE_URL` と `SUPABASE_URL`
    - anon public キー → `VITE_SUPABASE_ANON_KEY` と `SUPABASE_ANON_KEY`
@@ -42,7 +46,7 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
 → Deployments → 最新の「⋯」→ Redeploy(環境変数は再デプロイで反映)
 
 `SUPABASE_SERVICE_ROLE_KEY`、`ANTHROPIC_API_KEY`、`STRIPE_SECRET_KEY`、
-`STRIPE_WEBHOOK_SECRET`、`MLIT_API_KEY` はサーバー専用です。
+`STRIPE_WEBHOOK_SECRET`、`MLIT_API_KEY`、`ADMIN_EMAILS` はサーバー専用です。
 `VITE_` 接頭辞を付けたり、クライアントコードへ記載したりしないでください。
 
 ### 3. 国土交通省 不動産情報ライブラリAPI
@@ -54,7 +58,32 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
 実装は公式の [XIT001](https://www.reinfolib.mlit.go.jp/help/apiManual/xit001/) と
 [XIT002](https://www.reinfolib.mlit.go.jp/help/apiManual/xit002/) を使用します。
 
-### 4. Stripe(約15分)
+### 4. 競売データの管理者CSV取り込み
+
+BITのサイト利用条件と `robots.txt`、現行検索画面の構造を確認した結果、
+PR#5では自動クロールを採用せず、管理者が手動で転記・エクスポートしたCSVを
+`POST /api/auction-import` で取り込む方式にしています。BITへの自動アクセスや
+3点セットPDFの保存は行いません。
+
+1. `supabase/schema_v4_auction.sql` をSQL Editorで実行
+2. Vercelの `ADMIN_EMAILS` に取り込みを許可するログインメールをカンマ区切りで設定
+3. 対象管理者でログインして得たJWTを `Authorization: Bearer <JWT>` に設定
+4. `Content-Type: text/csv` でCSV本文をPOST（JSONの `{"csv":"..."}` も可）
+
+必須列は `id` と `bit_url` です。対応する全列は次のとおりです。
+
+```csv
+id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_end,open_date,built_year,floor_area,land_area,bit_url,active
+13105-R8-K1-1,東京地方裁判所,令和8年(ケ)第1号,1,東京都,文京区,文京区○○,マンション,20000000,4000000,2026-08-01,2026-08-08,2026-08-15,2001,45.2,,https://www.bit.courts.go.jp/app/example,true
+```
+
+- `type`: `マンション` / `戸建て` / `土地` / `その他`
+- 金額は円、日付は `YYYY-MM-DD`
+- `bit_url` は `https://www.bit.courts.go.jp/` 配下のみ許可
+- 1回最大1,000件。同一 `id` は更新し、初回登録日時は保持
+- 認証なしは401、許可メール以外は403、`ADMIN_EMAILS` 未設定は501
+
+### 5. Stripe(約15分)
 1. https://stripe.com でアカウント作成 → 商品「現実派 Pro」月額¥1,480のサブスクを作成
 2. Payment Link を発行 → URLを `src/plan.js` の `PURCHASE_URL` に設定
 3. Developers → Webhooks → Add endpoint:
@@ -62,13 +91,14 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
    - イベント: `checkout.session.completed` と `customer.subscription.deleted`
 4. 発行された署名シークレット(whsec_...)を Vercel の `STRIPE_WEBHOOK_SECRET` に設定 → Redeploy
 
-### 5. 動作確認
+### 6. 動作確認
 1. アプリで新規登録 → 確認メール → ログイン(Freeプラン表示)
 2. 「Proにアップグレード」→ Stripeのテストモードでテストカード(4242 4242 4242 4242)決済
 3. 「決済後、反映を確認する」→ Proに切り替われば全経路が通っています
 4. AI調査を1回実行 → Supabaseの profiles で ai_used が増えていれば完璧
 5. `POST /api/market-price` をProユーザーのJWT付きで実行し、Supabaseの
-   `market_cache` に結果が保存されることを確認(照合UIは次のPRで追加)
+   `market_cache` に結果が保存されることを確認
+6. 管理者JWT付きで `POST /api/auction-import` を実行し、`auction_items` に結果が保存されることを確認
 
 ## ユーザーから見た流れ
 

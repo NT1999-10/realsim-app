@@ -1,37 +1,104 @@
+import zlib from "zlib";
+
 // Vercel Serverless Function: /api/market-price
-// 国土交通省「不動産情報ライブラリ」の直近8四半期を集計するPro限定API。
-// 必要な環境変数: MLIT_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY,
-// SUPABASE_SERVICE_ROLE_KEY
+// 国土交通省「不動産情報ライブラリ」の整備済み過去3年を集計するPro限定API。
 
 const MLIT_BASE = "https://www.reinfolib.mlit.go.jp/ex-api/external";
 const CITY_TTL_MS = 24 * 60 * 60 * 1000;
 const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TIME_BUDGET_MS = 8000;
+const FETCH_TIMEOUT_MS = 4000;
 const DAILY_LIMIT = 30;
 const cityCache = new Map();
 const usageByUser = new Map();
 const VALID_TYPES = new Set(["mansion", "house", "land"]);
+const VALID_STAGES = new Set(["auth", "xit002", "empty", "parse", "timeout", "other"]);
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+class StageError extends Error {
+  constructor(stage, message, snippet = "") {
+    super(message);
+    this.stage = VALID_STAGES.has(stage) ? stage : "other";
+    this.snippet = String(snippet || "").slice(0, 300);
+  }
+}
 
-async function getUser(req) {
+function remainingMs(t0) {
+  return TIME_BUDGET_MS - (Date.now() - t0);
+}
+
+async function fetchBytes(url, options, t0) {
+  const remaining = remainingMs(t0);
+  if (remaining <= 0) {
+    throw new StageError("timeout", "全体の時間予算を超過しました");
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(), Math.min(FETCH_TIMEOUT_MS, remaining));
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return { response, buffer };
+  } catch (error) {
+    if (controller.signal.aborted || (error && error.name === "AbortError")) {
+      throw new StageError("timeout", "外部APIの応答がタイムアウトしました");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function decodeBufferText(buffer) {
+  return buffer[0] === 0x1f && buffer[1] === 0x8b
+    ? zlib.gunzipSync(buffer).toString("utf8")
+    : buffer.toString("utf8");
+}
+
+function responsePreview(buffer) {
+  try { return decodeBufferText(buffer).slice(0, 300); }
+  catch { return buffer.toString("utf8").slice(0, 300); }
+}
+
+function parseJsonBuffer(buffer) {
+  let text = "";
+  try {
+    text = decodeBufferText(buffer);
+    return { data: JSON.parse(text), text };
+  } catch {
+    throw new StageError("parse", "API応答の解析に失敗しました", text || responsePreview(buffer));
+  }
+}
+
+async function fetchJson(url, options, t0) {
+  const { response, buffer } = await fetchBytes(url, options, t0);
+  const parsed = parseJsonBuffer(buffer);
+  return { response, data: parsed.data, text: parsed.text };
+}
+
+function fail(res, stage, error) {
+  return res.status(200).json({
+    ok: false,
+    stage: VALID_STAGES.has(stage) ? stage : "other",
+    error: String(error || "データの取得に失敗しました"),
+  });
+}
+
+async function getUser(req, t0) {
   const url = process.env.SUPABASE_URL;
   const anon = process.env.SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    return { error: "サーバーの認証設定が未完了です", status: 501 };
-  }
+  if (!url || !anon) return { error: "サーバーの認証設定が未完了です" };
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-  if (!token) return { error: "ログインが必要です", status: 401 };
+  if (!token) return { error: "ログインが必要です" };
 
-  const response = await fetch(`${url}/auth/v1/user`, {
+  const { response, data } = await fetchJson(`${url}/auth/v1/user`, {
     headers: { apikey: anon, Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    return { error: "認証に失敗しました。再ログインしてください", status: 401 };
+  }, t0);
+  if (!response.ok || !data || !data.id) {
+    return { error: "認証に失敗しました。再ログインしてください" };
   }
-  const user = await response.json();
-  if (!user || !user.id) return { error: "認証に失敗しました", status: 401 };
-  return { userId: user.id };
+  return { userId: data.id };
 }
 
 function serviceHeaders() {
@@ -44,24 +111,19 @@ function serviceHeaders() {
   };
 }
 
-async function requirePro(userId) {
+async function requirePro(userId, t0) {
   const url = process.env.SUPABASE_URL;
   const headers = serviceHeaders();
   if (!url || !headers) {
-    return { error: "サーバー設定(SERVICE_ROLE_KEY)が不足しています", status: 501 };
+    return { error: "サーバー設定(SERVICE_ROLE_KEY)が不足しています" };
   }
-  const response = await fetch(
+  const { response, data } = await fetchJson(
     `${url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=plan`,
-    { headers });
-  if (!response.ok) {
-    return { error: "プラン情報を確認できませんでした", status: 500 };
-  }
-  const rows = await response.json();
-  const profile = Array.isArray(rows) ? rows[0] : null;
-  if (!profile) return { error: "プロファイルが見つかりません", status: 403 };
-  if (profile.plan !== "pro") {
-    return { error: "相場照合はProプラン限定です", status: 403 };
-  }
+    { headers }, t0);
+  const profile = Array.isArray(data) ? data[0] : null;
+  if (!response.ok) return { error: "プラン情報を確認できませんでした" };
+  if (!profile) return { error: "プロファイルが見つかりません" };
+  if (profile.plan !== "pro") return { error: "相場照合はProプラン限定です" };
   return { ok: true };
 }
 
@@ -79,20 +141,19 @@ function normalizeCityName(value) {
 }
 
 function requestKey(pref, cityName, type) {
-  return [pref, normalizeCityName(cityName), type].join(":");
+  return ["mlit-v2", pref, normalizeCityName(cityName), type].join(":");
 }
 
-async function readMarketCache(key) {
+async function readMarketCache(key, t0) {
   const url = process.env.SUPABASE_URL;
   const headers = serviceHeaders();
   if (!url || !headers) return null;
   try {
-    const response = await fetch(
+    const { response, data } = await fetchJson(
       `${url}/rest/v1/market_cache?key=eq.${encodeURIComponent(key)}&select=payload,fetched_at`,
-      { headers });
+      { headers }, t0);
     if (!response.ok) return null;
-    const rows = await response.json();
-    const row = Array.isArray(rows) ? rows[0] : null;
+    const row = Array.isArray(data) ? data[0] : null;
     if (!row || !row.payload || !row.fetched_at) return null;
     const age = Date.now() - new Date(row.fetched_at).getTime();
     return Number.isFinite(age) && age >= 0 && age < MARKET_TTL_MS
@@ -102,46 +163,51 @@ async function readMarketCache(key) {
   }
 }
 
-async function writeMarketCache(key, payload) {
+async function writeMarketCache(key, payload, t0) {
   const url = process.env.SUPABASE_URL;
   const headers = serviceHeaders();
-  if (!url || !headers) return;
+  if (!url || !headers || remainingMs(t0) <= 0) return;
   try {
-    await fetch(`${url}/rest/v1/market_cache?on_conflict=key`, {
+    await fetchBytes(`${url}/rest/v1/market_cache?on_conflict=key`, {
       method: "POST",
       headers: { ...headers, Prefer: "resolution=merge-duplicates" },
       body: JSON.stringify({ key, payload, fetched_at: new Date().toISOString() }),
-    });
+    }, t0);
   } catch {
     // キャッシュ保存失敗は取得結果自体を失敗させない。
   }
 }
 
-async function fetchMlit(endpoint, params, apiKey) {
+async function fetchMlit(endpoint, params, apiKey, t0, stage) {
   const query = new URLSearchParams(params);
-  const response = await fetch(`${MLIT_BASE}/${endpoint}?${query}`, {
-    headers: {
-      "Ocp-Apim-Subscription-Key": apiKey,
-      Accept: "application/json",
-    },
-  });
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error("国交省APIの応答を読み取れませんでした");
+  const { response, buffer } = await fetchBytes(
+    `${MLIT_BASE}/${endpoint}?${query}`, {
+      headers: {
+        "Ocp-Apim-Subscription-Key": apiKey,
+        "Accept-Encoding": "gzip",
+        Accept: "application/json",
+      },
+    }, t0);
+  const preview = responsePreview(buffer);
+
+  if (response.status === 401 || response.status === 403) {
+    console.log("[market-price] MLIT auth failure", preview);
+    throw new StageError("auth", "国交省APIの認証に失敗しました", preview);
   }
+
+  const { data, text } = parseJsonBuffer(buffer);
   if (!response.ok || !data || (data.status && data.status !== "OK")) {
-    throw new Error("国交省APIからデータを取得できませんでした");
+    console.log(`[market-price] ${endpoint} failure`, text.slice(0, 300));
+    throw new StageError(stage, "国交省APIからデータを取得できませんでした", text);
   }
   return data;
 }
 
-async function cityList(pref, apiKey) {
+async function cityList(pref, apiKey, t0) {
   const cached = cityCache.get(pref);
   if (cached && cached.expiresAt > Date.now()) return cached.cities;
 
-  const response = await fetchMlit("XIT002", { area: pref }, apiKey);
+  const response = await fetchMlit("XIT002", { area: pref }, apiKey, t0, "xit002");
   const rows = Array.isArray(response.data) ? response.data
     : Array.isArray(response) ? response : [];
   const cities = rows
@@ -169,32 +235,16 @@ export function resolveCity(cities, input) {
   return matches[0] || null;
 }
 
-export function recentEightQuarters(now = new Date()) {
-  let year = now.getUTCFullYear();
-  let quarter = Math.floor(now.getUTCMonth() / 3) + 1;
-  quarter -= 1;
-  if (quarter === 0) { quarter = 4; year -= 1; }
-
-  const result = [];
-  for (let i = 0; i < 8; i++) {
-    result.push({ year, quarter });
-    quarter -= 1;
-    if (quarter === 0) { quarter = 4; year -= 1; }
-  }
-  return result;
+export function targetYears(now = new Date()) {
+  const start = now.getUTCFullYear() - 2;
+  return [start, start - 1, start - 2];
 }
 
 export function matchesType(value, type) {
   const text = String(value || "").replace(/\s+/g, "");
   if (type === "mansion") return text.includes("中古マンション");
-  if (type === "house") {
-    return text.includes("宅地(土地と建物)") ||
-      text.includes("一戸建て") || text.includes("戸建");
-  }
-  if (type === "land") {
-    return text === "宅地(土地)" ||
-      (text.includes("土地") && !text.includes("建物"));
-  }
+  if (type === "house") return text.includes("宅地(土地と建物)");
+  if (type === "land") return text.includes("宅地(土地)");
   return false;
 }
 
@@ -213,10 +263,12 @@ export function mapTransaction(row) {
   const price = numberValue(row.TradePrice ?? row.tradePrice ?? row.price);
   const area = numberValue(row.Area ?? row.area);
   if (!price || !area) return null;
+  const unit = price / area;
+  if (unit < 10000 || unit > 10000000) return null;
   return {
     price,
     area,
-    unit: Math.round(price / area),
+    unit: Math.round(unit),
     builtYear: builtYear(row.BuildingYear ?? row.buildingYear),
     period: String(row.Period ?? row.period ?? ""),
   };
@@ -248,21 +300,35 @@ export function aggregateTransactions(rows, type, city) {
   };
 }
 
-async function fetchTransactions(pref, cityCode, apiKey) {
-  const rows = [];
-  const quarters = recentEightQuarters();
-  for (let index = 0; index < quarters.length; index++) {
-    const period = quarters[index];
-    const response = await fetchMlit("XIT001", {
-      year: String(period.year),
-      quarter: String(period.quarter),
-      area: pref,
-      city: cityCode,
-    }, apiKey);
-    if (Array.isArray(response.data)) rows.push(...response.data);
-    if (index < quarters.length - 1) await sleep(1000);
+async function fetchTransactions(cityCode, apiKey, t0) {
+  const years = targetYears();
+  const results = await Promise.all(years.map(async (year) => {
+    try {
+      const response = await fetchMlit("XIT001", {
+        year: String(year),
+        city: cityCode,
+      }, apiKey, t0, "other");
+      const rows = Array.isArray(response.data) ? response.data : [];
+      console.log(`[market-price] year=${year} count=${rows.length}`);
+      return { year, rows, error: null };
+    } catch (error) {
+      const normalized = error instanceof StageError
+        ? error : new StageError("other", String(error && error.message || error));
+      console.log(`[market-price] year=${year} failed stage=${normalized.stage}`,
+        normalized.snippet.slice(0, 300));
+      return { year, rows: [], error: normalized };
+    }
+  }));
+  return results;
+}
+
+function failureFromResults(results) {
+  const errors = results.map((result) => result.error).filter(Boolean);
+  for (const stage of ["auth", "parse", "timeout", "other"]) {
+    const found = errors.find((error) => error.stage === stage);
+    if (found) return found;
   }
-  return rows;
+  return new StageError("empty", "取引データが見つかりませんでした");
 }
 
 function parseBody(req) {
@@ -274,61 +340,73 @@ function parseBody(req) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "POSTのみ受け付けます" });
-  }
-
-  const who = await getUser(req);
-  if (who.error) return res.status(who.status).json({ error: who.error });
-  const plan = await requirePro(who.userId);
-  if (plan.error) return res.status(plan.status).json({ error: plan.error });
-  const body = parseBody(req);
-  const pref = String(body.pref || "").trim();
-  const cityName = normalizeCityName(body.cityName);
-  const type = String(body.type || "");
-  if (!/^(0[1-9]|[1-3]\d|4[0-7])$/.test(pref)) {
-    return res.status(400).json({ error: "都道府県コードが正しくありません" });
-  }
-  if (!cityName || cityName.length > 80) {
-    return res.status(400).json({ error: "市区町村を入力してください" });
-  }
-  if (!VALID_TYPES.has(type)) {
-    return res.status(400).json({ error: "物件種別が正しくありません" });
-  }
-
-  const apiKey = process.env.MLIT_API_KEY;
-  if (!apiKey) {
-    return res.status(501).json({
-      error: "サーバーに MLIT_API_KEY が未設定です",
-    });
-  }
-
-  if (!consumeDailyQuota(who.userId)) {
-    return res.status(429).json({ error: "本日の相場照合回数上限(30回)に達しました" });
-  }
-
-  const key = requestKey(pref, cityName, type);
-  const cached = await readMarketCache(key);
-  if (cached) {
-    res.setHeader("X-Market-Cache", "HIT");
-    return res.status(200).json(cached);
-  }
-
+  const t0 = Date.now();
   try {
-    const cities = await cityList(pref, apiKey);
-    const city = resolveCity(cities, cityName);
-    if (!city) return res.status(404).json({ error: "市区町村が見つかりません" });
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST");
+      return fail(res, "other", "POSTのみ受け付けます");
+    }
 
-    const rows = await fetchTransactions(pref, city.code, apiKey);
-    const payload = aggregateTransactions(rows, type, city);
-    await writeMarketCache(key, payload);
+    const who = await getUser(req, t0);
+    if (who.error) return fail(res, "other", who.error);
+    const plan = await requirePro(who.userId, t0);
+    if (plan.error) return fail(res, "other", plan.error);
+
+    const body = parseBody(req);
+    const pref = String(body.pref || "").trim();
+    const cityName = normalizeCityName(body.cityName);
+    const type = String(body.type || "");
+    if (!/^(0[1-9]|[1-3]\d|4[0-7])$/.test(pref)) {
+      return fail(res, "other", "都道府県コードが正しくありません");
+    }
+    if (!cityName || cityName.length > 80) {
+      return fail(res, "xit002", "市区町村を入力してください");
+    }
+    if (!VALID_TYPES.has(type)) {
+      return fail(res, "other", "物件種別が正しくありません");
+    }
+
+    const apiKey = process.env.MLIT_API_KEY;
+    if (!apiKey) return fail(res, "auth", "MLIT_API_KEY が未設定です");
+    if (!consumeDailyQuota(who.userId)) {
+      return fail(res, "other", "本日の相場照合回数上限(30回)に達しました");
+    }
+
+    const key = requestKey(pref, cityName, type);
+    const cached = await readMarketCache(key, t0);
+    if (cached && cached.ok === true) {
+      res.setHeader("X-Market-Cache", "HIT");
+      return res.status(200).json(cached);
+    }
+
+    const cities = await cityList(pref, apiKey, t0);
+    const city = resolveCity(cities, cityName);
+    if (!city) return fail(res, "xit002", "市区町村が見つかりませんでした");
+    console.log(`[market-price] city=${city.name} code=${city.code}`);
+
+    const yearly = await fetchTransactions(city.code, apiKey, t0);
+    const rows = yearly.flatMap((result) => result.rows);
+    const years = yearly.filter((result) => result.rows.length > 0)
+      .map((result) => result.year);
+    if (!rows.length) {
+      const failure = failureFromResults(yearly);
+      return fail(res, failure.stage, failure.message);
+    }
+
+    const aggregate = aggregateTransactions(rows, type, city);
+    if (!aggregate.count) {
+      return fail(res, "empty", "指定した地域・種別の取引データが見つかりませんでした");
+    }
+
+    const payload = { ok: true, ...aggregate, years };
+    await writeMarketCache(key, payload, t0);
     res.setHeader("X-Market-Cache", "MISS");
     return res.status(200).json(payload);
   } catch (error) {
-    return res.status(502).json({
-      error: error && error.message
-        ? error.message : "相場データの取得に失敗しました",
-    });
+    const normalized = error instanceof StageError
+      ? error : new StageError("other", String(error && error.message || error));
+    console.log(`[market-price] failed stage=${normalized.stage}`,
+      normalized.snippet.slice(0, 300));
+    return fail(res, normalized.stage, normalized.message);
   }
 }

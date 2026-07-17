@@ -2474,7 +2474,7 @@ export default function App() {
       ["bid_start", "入札開始"], ["bid_end", "入札終了"], ["open_date", "開札日"],
     ].flatMap(([field, label]) => {
       const date = item[field];
-      if (!date || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return [];
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
       const md = date.slice(5).replace("-", "/");
       return [{
         id: "auction-" + item.id + "-" + field,

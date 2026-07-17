@@ -51,7 +51,7 @@ export function evaluateDeviation(value) {
   if (!Number.isFinite(value)) {
     return { color: T.sub, label: "判定できません" };
   }
-  if (value < -10) return { color: T.blue, label: "割安圏。理由の確認を" };
+  if (value < -10) return { color: T.blue, label: "割安圏。相場より安い理由(再建築不可・借地権・築古・低層階など)の確認を" };
   if (value <= 10) return { color: T.good, label: "相場圏内" };
   if (value <= 25) return { color: T.warnInk, label: "やや割高" };
   return { color: T.real, label: "割高。指値の根拠になります" };

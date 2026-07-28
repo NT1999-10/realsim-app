@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { computeMetrics } from "../engine.js";
 import { T } from "../theme.js";
 import { Field, Select, cardSt, h2St, LockCard } from "../ui.jsx";
@@ -34,7 +34,7 @@ const money = (v) => Math.round(v).toLocaleString() + "円";
 const pct = (v) => (v == null || !isFinite(v) ? "—" : v.toFixed(1) + "%");
 const ratio = (v) => (v == null || !isFinite(v) ? "—" : v.toFixed(2));
 
-export default function SashineLab({ p, isPro, onUpgrade }) {
+export default function SashineLab({ p, isPro, onUpgrade, auctionRequest = 0 }) {
   const [mode, setMode] = useState("normal");
   const [targetType, setTargetType] = useState("irr");
   const [targetValue, setTargetValue] = useState(5);
@@ -63,6 +63,10 @@ export default function SashineLab({ p, isPro, onUpgrade }) {
     setTargetType("irr");
     setTargetValue(next === "auction" ? 8 : 5);
   };
+
+  useEffect(() => {
+    if (auctionRequest > 0) switchMode("auction");
+  }, [auctionRequest]);
 
   const targetUnit = targetType === "irr" ? "%" : targetType === "cf" ? "円/月" : "";
   const targetStep = targetType === "cf" ? 1000 : 0.1;

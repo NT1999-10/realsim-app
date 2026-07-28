@@ -206,8 +206,19 @@ export function rowsFromCsv(text) {
 }
 
 function csvBody(req) {
-  if (typeof req.body === "string") return req.body;
   if (req.body && typeof req.body.csv === "string") return req.body.csv;
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(req.body)) {
+    return req.body.toString("utf8");
+  }
+  if (typeof req.body === "string") {
+    try {
+      const parsed = JSON.parse(req.body);
+      if (parsed && typeof parsed.csv === "string") return parsed.csv;
+    } catch {
+      // text/csvは文字列をそのまま取り込む。
+    }
+    return req.body;
+  }
   return "";
 }
 

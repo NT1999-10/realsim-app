@@ -144,8 +144,12 @@ function AdminImportSection() {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(EMPTY_AUCTION);
   const [csvText, setCsvText] = useState("");
-  const [message, setMessage] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [formMessage, setFormMessage] = useState(null);
+  const [bulkMessage, setBulkMessage] = useState(null);
+  const [listMessage, setListMessage] = useState(null);
+  const [formBusy, setFormBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [listBusy, setListBusy] = useState(false);
 
   const setField = (key) => (e) => setForm((current) => ({
     ...current, [key]: e.target.value,
@@ -164,59 +168,98 @@ function AdminImportSection() {
 
   useEffect(() => { refresh(); }, []);
 
-  const importCsv = async (csv, successText, clear) => {
-    setBusy(true);
-    setMessage(null);
+  const submitForm = async () => {
+    setFormMessage(null);
+    if (!form.case_no.trim()) {
+      setFormMessage({ ok: false, text: "事件番号が未入力です。事件番号を入力してください" });
+      return;
+    }
+    if (!form.bit_url.trim()) {
+      setFormMessage({ ok: false, text: "BITの物件URLが未入力です。公式URLを入力してください" });
+      return;
+    }
+
+    const csv = auctionFormCsv(form);
+    console.info("[auction-import] 方式A送信ペイロード", {
+      id: auctionImportId(form),
+      csv,
+    });
+    setFormBusy(true);
     try {
       const data = await adminFetch({
         method: "POST",
-        headers: { "Content-Type": "text/csv" },
-        body: csv,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv }),
       });
-      setMessage({ ok: true, text: successText + "（" + data.imported + "件）" });
-      clear();
+      setFormMessage({ ok: true, text: "登録しました（" + data.imported + "件）" });
+      setForm({ ...EMPTY_AUCTION });
       await refresh();
     } catch (error) {
-      setMessage({ ok: false, text: String((error && error.message) || error) });
+      setFormMessage({
+        ok: false,
+        text: "登録できませんでした: " + String((error && error.message) || error),
+      });
     } finally {
-      setBusy(false);
+      setFormBusy(false);
     }
   };
 
-  const submitForm = () => {
-    if (!form.case_no.trim()) {
-      setMessage({ ok: false, text: "事件番号を入力してください" }); return;
+  const submitBulk = async () => {
+    setBulkMessage(null);
+    if (!csvText.trim()) {
+      setBulkMessage({ ok: false, text: "CSVが未入力です。ヘッダー行とデータ行を貼り付けてください" });
+      return;
     }
-    if (!form.bit_url.trim()) {
-      setMessage({ ok: false, text: "BITの物件URLを入力してください" }); return;
+    setBulkBusy(true);
+    try {
+      const data = await adminFetch({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: csvText }),
+      });
+      setBulkMessage({ ok: true, text: "まとめて登録しました（" + data.imported + "件）" });
+      setCsvText("");
+      await refresh();
+    } catch (error) {
+      setBulkMessage({
+        ok: false,
+        text: "一括登録できませんでした: " + String((error && error.message) || error),
+      });
+    } finally {
+      setBulkBusy(false);
     }
-    importCsv(auctionFormCsv(form), "登録しました", () => setForm(EMPTY_AUCTION));
   };
 
   const deactivate = async (id) => {
-    setBusy(true);
-    setMessage(null);
+    setListBusy(true);
+    setListMessage(null);
     try {
       await adminFetch({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "deactivate", id }),
       });
-      setMessage({ ok: true, text: "無効化しました" });
+      setListMessage({ ok: true, text: "無効化しました" });
       await refresh();
     } catch (error) {
-      setMessage({ ok: false, text: String((error && error.message) || error) });
+      setListMessage({
+        ok: false,
+        text: "無効化できませんでした: " + String((error && error.message) || error),
+      });
     } finally {
-      setBusy(false);
+      setListBusy(false);
     }
   };
 
   const copyHeader = async () => {
     try {
       await navigator.clipboard.writeText(CSV_HEADER);
-      setMessage({ ok: true, text: "ヘッダー行をコピーしました" });
+      setBulkMessage({ ok: true, text: "ヘッダー行をコピーしました" });
     } catch {
-      setMessage({ ok: false, text: "コピーできませんでした。ヘッダー行を選択してコピーしてください" });
+      setBulkMessage({
+        ok: false,
+        text: "コピーできませんでした。ヘッダー行を選択してコピーしてください",
+      });
     }
   };
 
@@ -283,10 +326,18 @@ function AdminImportSection() {
         {field("BITの物件URL*", "bit_url",
           { type: "url", required: true, placeholder: "https://www.bit.courts.go.jp/..." })}
       </div>
-      <button type="button" onClick={submitForm} disabled={busy}
-        style={{ ...btnSt(T.teal), marginTop: 12, opacity: busy ? 0.6 : 1 }}>
-        {busy ? "処理中…" : "登録する"}
+      <button type="button" onClick={submitForm} disabled={formBusy}
+        style={{ ...btnSt(T.teal), marginTop: 12, opacity: formBusy ? 0.6 : 1 }}>
+        {formBusy ? "処理中…" : "登録する"}
       </button>
+      {formMessage && (
+        <div role={formMessage.ok ? "status" : "alert"}
+          style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5,
+            color: formMessage.ok ? T.good : T.real,
+            background: formMessage.ok ? "rgba(35,139,91,.08)" : "rgba(209,75,50,.08)" }}>
+          {formMessage.text}
+        </div>
+      )}
 
       <div style={{ borderTop: `1px dashed ${T.line}`, margin: "18px 0 14px" }} />
       <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 8px" }}>
@@ -303,19 +354,19 @@ function AdminImportSection() {
       <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)}
         placeholder="ヘッダー行付きCSVを貼り付けてください"
         style={{ ...inputSt, minHeight: 150, fontFamily: "monospace", resize: "vertical" }} />
-      <button type="button" disabled={busy || !csvText.trim()}
-        onClick={() => importCsv(csvText, "まとめて登録しました", () => setCsvText(""))}
+      <button type="button" disabled={bulkBusy || !csvText.trim()}
+        onClick={submitBulk}
         style={{ ...btnSt(T.navy), marginTop: 8,
-          opacity: busy || !csvText.trim() ? 0.5 : 1 }}>
-        まとめて登録
+          opacity: bulkBusy || !csvText.trim() ? 0.5 : 1 }}>
+        {bulkBusy ? "処理中…" : "まとめて登録"}
       </button>
 
-      {message && (
-        <div role="status" style={{ marginTop: 10, padding: "8px 10px",
-          borderRadius: 8, fontSize: 12.5,
-          color: message.ok ? T.good : T.real,
-          background: message.ok ? "rgba(35,139,91,.08)" : "rgba(209,75,50,.08)" }}>
-          {message.text}
+      {bulkMessage && (
+        <div role={bulkMessage.ok ? "status" : "alert"}
+          style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5,
+            color: bulkMessage.ok ? T.good : T.real,
+            background: bulkMessage.ok ? "rgba(35,139,91,.08)" : "rgba(209,75,50,.08)" }}>
+          {bulkMessage.text}
         </div>
       )}
 
@@ -323,6 +374,14 @@ function AdminImportSection() {
       <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 10px" }}>
         登録済み一覧（直近20件）
       </h3>
+      {listMessage && (
+        <div role={listMessage.ok ? "status" : "alert"}
+          style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5,
+            color: listMessage.ok ? T.good : T.real,
+            background: listMessage.ok ? "rgba(35,139,91,.08)" : "rgba(209,75,50,.08)" }}>
+          {listMessage.text}
+        </div>
+      )}
       <div style={{ display: "grid", gap: 7 }}>
         {items.length ? items.map((item) => (
           <div key={item.id} style={{ display: "grid", gap: 6, alignItems: "center",
@@ -338,7 +397,7 @@ function AdminImportSection() {
               <div>{item.type || "その他"} ／ {yen(item.min_price)}</div>
               <div>入札終了 {dateLabel(item.bid_end)} ／ {item.active ? "有効" : "無効"}</div>
             </div>
-            <button type="button" disabled={busy || !item.active}
+            <button type="button" disabled={listBusy || !item.active}
               onClick={() => deactivate(item.id)}
               style={{ ...btnSt(item.active ? T.real : T.sub),
                 opacity: item.active ? 1 : 0.45 }}>

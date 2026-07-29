@@ -46,13 +46,27 @@ export function pasteHeaderKey(value) {
   return null;
 }
 
+function delimiterCount(line, delimiter) {
+  let count = 0;
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] === '"') {
+      if (quoted && line[index + 1] === '"') index += 1;
+      else quoted = !quoted;
+    } else if (!quoted && line[index] === delimiter) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export function detectPasteDelimiter(source) {
   const firstLine = String(source || "").replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] || "";
   const candidates = ["\t", ",", "，"];
-  let best = candidates[0];
-  let count = -1;
+  let best = ",";
+  let count = 0;
   for (const candidate of candidates) {
-    const next = firstLine.split(candidate).length - 1;
+    const next = delimiterCount(firstLine, candidate);
     if (next > count) {
       best = candidate;
       count = next;
@@ -260,8 +274,12 @@ function evaluateValues(raw, line) {
     }
   };
 
-  capture(() => parseInteger(raw.item_no, "物件番号", 1), 1,
-    (value) => { values.item_no = Math.max(1, value || 1); });
+  capture(() => {
+    const value = parseInteger(raw.item_no, "物件番号", 1);
+    if (value < 1) throw new Error("物件番号は1以上で入力してください");
+    return value;
+  }, text(raw.item_no),
+    (value) => { values.item_no = value; });
 
   const type = normalizeType(raw.type);
   values.type = type.value;
@@ -338,12 +356,22 @@ export function parseAuctionPaste(source) {
   if (!body.length) throw new Error("登録候補のデータ行がありません");
   if (body.length > 1000) throw new Error("1回に解析できるのは1,000件までです");
 
+  const seen = new Set();
   return body.map((cells, index) => {
     const raw = {};
     headers.forEach((key, column) => {
       if (key && raw[key] == null) raw[key] = cells[column] == null ? "" : cells[column];
     });
     const evaluated = evaluateValues(raw, index + (hasHeader ? 2 : 1));
+    if (!hasHeader) {
+      evaluated.warnings.push("ヘッダーを検出できなかったため既定の列順として解析しました");
+      if (!evaluated.errors.length) evaluated.status = "warning";
+    }
+    if (evaluated.values.id && seen.has(evaluated.values.id)) {
+      evaluated.errors.push("貼り付け内容で物件IDが重複しています: " + evaluated.values.id);
+      evaluated.status = "error";
+    }
+    if (evaluated.values.id) seen.add(evaluated.values.id);
     return { ...evaluated, selected: evaluated.errors.length === 0 };
   });
 }

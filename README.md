@@ -59,7 +59,7 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
 実装は公式の [XIT001](https://www.reinfolib.mlit.go.jp/help/apiManual/xit001/) と
 [XIT002](https://www.reinfolib.mlit.go.jp/help/apiManual/xit002/) を使用します。
 
-### 4. 競売データの管理者CSV取り込み
+### 4. 競売データの管理者取り込み
 
 BITのサイト利用条件と `robots.txt`、現行検索画面の構造を確認した結果、
 PR#5では自動クロールを採用せず、管理者が手動で転記・エクスポートしたCSVを
@@ -71,11 +71,12 @@ PR#5では自動クロールを採用せず、管理者が手動で転記・エ�
 3. 対象管理者でログインして得たJWTを `Authorization: Bearer <JWT>` に設定
 4. `Content-Type: text/csv` でCSV本文をPOST（JSONの `{"csv":"..."}` も可）
 
-必須列は `id` と `bit_url` です。対応する全列は次のとおりです。
+必須列は `case_no` と `bit_url` です。`id` が空の場合は裁判所・事件番号・物件番号から自動生成します。
+対応する全列は次のとおりです。
 
 ```csv
 id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_end,open_date,built_year,floor_area,land_area,bit_url,active
-13105-R8-K1-1,東京地方裁判所,令和8年(ケ)第1号,1,東京都,文京区,文京区○○,マンション,20000000,4000000,2026-08-01,2026-08-08,2026-08-15,2001,45.2,,https://www.bit.courts.go.jp/app/example,true
+,東京地方裁判所,令和8年(ケ)第1号,1,東京都,文京区,文京区○○,マンション,20000000,4000000,2026-08-01,2026-08-08,2026-08-15,2001,45.2,,https://www.bit.courts.go.jp/app/example,true
 ```
 
 - `type`: `マンション` / `戸建て` / `土地` / `その他`
@@ -85,7 +86,10 @@ id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_
 - 認証なしは401、許可メール以外は403、`ADMIN_EMAILS` 未設定は501
 
 管理者メールでログインすると、アプリの「競売」タブ上部に管理者専用の取り込み画面が表示されます。
-1件入力フォーム、ヘッダー付きCSVの一括貼り付け、直近20件の確認・無効化を画面上で行えます。
+推奨の「表を貼り付けて一括登録」は、BIT検索結果・Excelのタブ区切り・CSVを自動判別し、
+登録前の編集可能なプレビューで正常行だけを選べます。UTF-8 BOM付きCSVテンプレートも画面から取得できます。
+1件修正用フォーム、従来のCSV貼り付け、直近20件の確認・無効化も引き続き利用できます。
+登録結果は新規・更新・除外件数と行ごとの理由を返します。
 管理者判定は `GET /api/auction-import` がサーバー側で行い、許可メール一覧はブラウザへ返しません。
 
 Proユーザーはアプリの「競売」タブから `POST /api/auction-list` を利用します。

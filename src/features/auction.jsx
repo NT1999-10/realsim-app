@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase, authEnabled } from "../auth.js";
 import { T } from "../theme.js";
 import { cardSt, h2St, btnSt } from "../ui.jsx";
+import AuctionPasteImport from "./auction-paste-ui.jsx";
 
 const PREFECTURES = [
   "", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
@@ -280,8 +281,10 @@ function AdminImportSection() {
         BITの公表情報を確認のうえ転記してください。3点セットPDFの保存・転載は行わず、リンクのみ登録します。
       </div>
 
+      <AuctionPasteImport request={adminFetch} onImported={refresh} />
+
       <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 10px" }}>
-        方式A: フォーム入力（1件ずつ）
+        方式A: フォーム入力（1件修正用）
       </h3>
       <div style={{ display: "grid", gap: 10,
         gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>

@@ -140,7 +140,7 @@ async function listItems(query) {
 
   const offset = (query.page - 1) * PAGE_SIZE;
   const params = new URLSearchParams({
-    select: "id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_end,open_date,built_year,floor_area,land_area,bit_url,first_seen,updated_at",
+    select: "id,court,case_no,item_no,pref,city,address,type,min_price,buyable_price,deposit,bid_start,bid_end,open_date,built_year,floor_area,land_area,appraisal_value,property_tax_yen,city_planning_tax_yen,zoning,occupancy,price_reduced,notes,bit_url,first_seen,updated_at",
     active: "eq.true",
     bid_end: "gte." + todayJst(),
     order: query.sort + ".asc.nullslast",

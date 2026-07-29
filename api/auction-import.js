@@ -10,7 +10,7 @@ const CSV_COLUMNS = [
   "min_price", "deposit", "bid_start", "bid_end", "open_date", "built_year",
   "floor_area", "land_area", "bit_url", "active",
 ];
-const REQUIRED_COLUMNS = ["id", "bit_url"];
+const REQUIRED_COLUMNS = ["case_no", "bit_url"];
 const VALID_TYPES = new Set(["マンション", "戸建て", "土地", "その他"]);
 
 function serviceHeaders() {
@@ -145,18 +145,34 @@ function officialBitUrl(value) {
   return url.toString();
 }
 
+function generatedAuctionId(court, caseNo, itemNo) {
+  const courtKey = String(court || "").trim().replace(/\s+/g, "") || "裁判所未入力";
+  const caseKey = String(caseNo || "").trim().replace(/\s+/g, "");
+  const itemKey = Math.max(1, Math.floor(Number(itemNo) || 1));
+  return [courtKey, caseKey, itemKey].join(":");
+}
+
 export function mapAuctionRow(headers, values, lineNumber) {
   const raw = Object.fromEntries(headers.map((name, index) => [name, values[index] || ""]));
   try {
+    const court = nullableText(raw.court);
+    const caseNo = nullableText(raw.case_no);
+    const itemNoValue = nullableNumber(raw.item_no, true);
+    const itemNo = itemNoValue == null ? 1 : itemNoValue;
+    const bitUrl = nullableText(raw.bit_url);
+    if (!caseNo) throw new Error("事件番号(case_no)は必須です");
+    if (itemNo < 1) throw new Error("物件番号(item_no)は1以上で入力してください");
+    if (!bitUrl) throw new Error("BITの物件URL(bit_url)は必須です");
+
     const type = nullableText(raw.type) || "その他";
     if (!VALID_TYPES.has(type)) {
       throw new Error("typeはマンション/戸建て/土地/その他のいずれかです");
     }
     return {
-      id: String(raw.id || "").trim(),
-      court: nullableText(raw.court),
-      case_no: nullableText(raw.case_no),
-      item_no: nullableNumber(raw.item_no, true),
+      id: String(raw.id || "").trim() || generatedAuctionId(court, caseNo, itemNo),
+      court,
+      case_no: caseNo,
+      item_no: itemNo,
       pref: nullableText(raw.pref),
       city: nullableText(raw.city),
       address: nullableText(raw.address),
@@ -169,7 +185,7 @@ export function mapAuctionRow(headers, values, lineNumber) {
       built_year: nullableNumber(raw.built_year, true),
       floor_area: nullableNumber(raw.floor_area),
       land_area: nullableNumber(raw.land_area),
-      bit_url: officialBitUrl(raw.bit_url),
+      bit_url: officialBitUrl(bitUrl),
       active: booleanValue(raw.active),
       updated_at: new Date().toISOString(),
     };
@@ -178,7 +194,7 @@ export function mapAuctionRow(headers, values, lineNumber) {
   }
 }
 
-export function rowsFromCsv(text) {
+export function rowsFromCsvDetailed(text) {
   const parsed = parseCsv(text);
   if (parsed.length < 2) throw new Error("ヘッダーと1件以上のデータ行が必要です");
 
@@ -190,19 +206,40 @@ export function rowsFromCsv(text) {
   if (unknown.length) throw new Error("未対応の列があります: " + unknown.join(", "));
   const missing = REQUIRED_COLUMNS.filter((name) => !headers.includes(name));
   if (missing.length) throw new Error("必須列がありません: " + missing.join(", "));
-
-  const rows = parsed.slice(1).map((values, index) =>
-    mapAuctionRow(headers, values, index + 2));
-  if (rows.length > MAX_ROWS) {
+  if (parsed.length - 1 > MAX_ROWS) {
     throw new Error("1回に取り込めるのは" + MAX_ROWS + "件までです");
   }
+
+  const rows = [];
+  const errors = [];
   const ids = new Set();
-  for (const row of rows) {
-    if (!row.id) throw new Error("idは必須です");
-    if (ids.has(row.id)) throw new Error("CSV内でidが重複しています: " + row.id);
-    ids.add(row.id);
+  parsed.slice(1).forEach((values, index) => {
+    const lineNumber = index + 2;
+    try {
+      const row = mapAuctionRow(headers, values, lineNumber);
+      if (ids.has(row.id)) {
+        throw new Error(lineNumber + "行目: CSV内でidが重複しています: " + row.id);
+      }
+      ids.add(row.id);
+      rows.push(row);
+    } catch (error) {
+      errors.push({
+        row: lineNumber,
+        reason: String(error && error.message || error)
+          .replace(new RegExp("^" + lineNumber + "行目:\\s*"), ""),
+      });
+    }
+  });
+  return { rows, errors };
+}
+
+export function rowsFromCsv(text) {
+  const result = rowsFromCsvDetailed(text);
+  if (result.errors.length) {
+    const first = result.errors[0];
+    throw new Error(first.row + "行目: " + first.reason);
   }
-  return rows;
+  return result.rows;
 }
 
 function csvBody(req) {
@@ -222,21 +259,49 @@ function csvBody(req) {
   return "";
 }
 
-async function upsertBatch(rows) {
+async function writeBatch(rows) {
   const url = process.env.SUPABASE_URL;
   const headers = serviceHeaders();
   if (!url || !headers) {
     throw new Error("サーバー設定(SERVICE_ROLE_KEY)が不足しています");
   }
-  const response = await fetch(url + "/rest/v1/auction_items?on_conflict=id", {
+
+  const endpoint = url + "/rest/v1/auction_items?on_conflict=id&select=id";
+  const insertResponse = await fetch(endpoint, {
     method: "POST",
-    headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+    headers: {
+      ...headers,
+      Prefer: "resolution=ignore-duplicates,return=representation",
+    },
     body: JSON.stringify(rows),
   });
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 300);
-    throw new Error("競売データの保存に失敗しました: " + detail);
+  const insertBody = await insertResponse.text();
+  let insertedRows = null;
+  try { insertedRows = JSON.parse(insertBody); } catch { /* 詳細は下で返す */ }
+  if (!insertResponse.ok || !Array.isArray(insertedRows)) {
+    throw new Error("競売データの新規登録に失敗しました: " +
+      insertBody.slice(0, 300));
   }
+
+  const insertedIds = new Set(insertedRows.map((row) => String(row.id)));
+  const updates = rows.filter((row) => !insertedIds.has(row.id));
+  if (updates.length) {
+    const updateResponse = await fetch(
+      url + "/rest/v1/auction_items?on_conflict=id", {
+        method: "POST",
+        headers: {
+          ...headers,
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify(updates),
+      });
+    if (!updateResponse.ok) {
+      const detail = (await updateResponse.text()).slice(0, 300);
+      throw new Error("既存の競売データ更新に失敗しました: " + detail);
+    }
+  }
+
+  return { inserted: insertedIds.size, updated: updates.length };
 }
 
 async function recentItems() {
@@ -305,12 +370,25 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, deactivated: req.body.id });
     }
 
-    const rows = rowsFromCsv(csvBody(req));
-    for (let index = 0; index < rows.length; index += BATCH_SIZE) {
-      await upsertBatch(rows.slice(index, index + BATCH_SIZE));
+    const parsed = rowsFromCsvDetailed(csvBody(req));
+    let inserted = 0;
+    let updated = 0;
+    for (let index = 0; index < parsed.rows.length; index += BATCH_SIZE) {
+      const result = await writeBatch(parsed.rows.slice(index, index + BATCH_SIZE));
+      inserted += result.inserted;
+      updated += result.updated;
     }
-    console.log("[auction-import] admin=" + who.email + " imported=" + rows.length);
-    return res.status(200).json({ ok: true, imported: rows.length });
+    const skipped = parsed.errors.length;
+    console.log("[auction-import] admin=" + who.email +
+      " inserted=" + inserted + " updated=" + updated + " skipped=" + skipped);
+    return res.status(200).json({
+      ok: true,
+      imported: inserted + updated,
+      inserted,
+      updated,
+      skipped,
+      errors: parsed.errors,
+    });
   } catch (error) {
     console.log("[auction-import] failed", String(error && error.message || error).slice(0, 300));
     return res.status(400).json({ error: String(error && error.message || error) });

@@ -339,6 +339,7 @@ function evaluateValues(raw, line) {
 
   return {
     line,
+    raw: { ...raw },
     values,
     errors: [...new Set(errors)],
     warnings: [...new Set(warnings)],
@@ -377,7 +378,7 @@ export function parseAuctionPaste(source) {
 }
 
 export function updateAuctionPasteRow(row, key, value) {
-  const evaluated = evaluateValues({ ...row.values, [key]: value }, row.line);
+  const evaluated = evaluateValues({ ...(row.raw || row.values), [key]: value }, row.line);
   return {
     ...evaluated,
     selected: evaluated.errors.length

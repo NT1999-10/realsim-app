@@ -284,7 +284,7 @@ function AdminImportSection() {
       <AuctionPasteImport request={adminFetch} onImported={refresh} />
 
       <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 10px" }}>
-        方式A: フォーム入力（1件ずつ）
+        方式A: フォーム入力（1件修正用）
       </h3>
       <div style={{ display: "grid", gap: 10,
         gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>

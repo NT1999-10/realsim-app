@@ -205,12 +205,14 @@ function AdminImportSection() {
     const yenToMan = (value) => value == null ? "" : String(Number(value) / 10000);
     setForm((current) => ({
       ...current,
+      item_no: "1",
+      bit_url: "",
       case_no: text(data.case_no),
       court: text(data.court),
       pref: text(data.pref),
       city: text(data.city),
       address: text(data.address),
-      type: data.type || current.type || "その他",
+      type: data.type || "その他",
       min_price_man: yenToMan(data.min_price),
       buyable_price_man: yenToMan(data.buyable_price),
       deposit_man: yenToMan(data.deposit),
@@ -555,7 +557,8 @@ function Checklist({ occupancy, embedded = false }) {
 
 function AuctionCard({ item, followed, onBid, onToggleFollow }) {
   const location = [item.pref, item.city].filter(Boolean).join("");
-  const appraisalRatio = Number(item.appraisal_value) > 0 && Number.isFinite(Number(item.min_price))
+  const appraisalRatio = Number(item.appraisal_value) > 0 && Number(item.min_price) > 0
+    && Number.isFinite(Number(item.min_price))
     ? Math.round((Number(item.min_price) / Number(item.appraisal_value)) * 1000) / 10
     : null;
   return (

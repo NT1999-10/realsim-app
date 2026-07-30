@@ -3,6 +3,7 @@ import { supabase, authEnabled } from "../auth.js";
 import { T } from "../theme.js";
 import { cardSt, h2St, btnSt } from "../ui.jsx";
 import AuctionPasteImport from "./auction-paste-ui.jsx";
+import AuctionPdfIntake from "./auction-pdf-intake.jsx";
 
 const PREFECTURES = [
   "", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
@@ -50,6 +51,18 @@ export function followRecord(item) {
     city: item.city,
     type: item.type,
     min_price: item.min_price,
+    buyable_price: item.buyable_price,
+    deposit: item.deposit,
+    built_year: item.built_year,
+    appraisal_value: item.appraisal_value,
+    property_tax_yen: item.property_tax_yen,
+    city_planning_tax_yen: item.city_planning_tax_yen,
+    zoning: item.zoning,
+    building_coverage: item.building_coverage,
+    floor_area_ratio: item.floor_area_ratio,
+    occupancy: item.occupancy,
+    price_reduced: item.price_reduced,
+    notes: item.notes,
     bid_start: item.bid_start,
     bid_end: item.bid_end,
     open_date: item.open_date,
@@ -57,7 +70,8 @@ export function followRecord(item) {
   };
 }
 
-const yen = (value) => Number.isFinite(Number(value))
+const yen = (value) => value !== null && value !== undefined && value !== ""
+  && Number.isFinite(Number(value))
   ? Math.round(Number(value)).toLocaleString() + "円" : "—";
 const dateLabel = (value) => value ? String(value).replace(/-/g, "/") : "—";
 
@@ -89,12 +103,18 @@ const CSV_HEADER = [
   "id", "court", "case_no", "item_no", "pref", "city", "address", "type",
   "min_price", "deposit", "bid_start", "bid_end", "open_date", "built_year",
   "floor_area", "land_area", "bit_url", "active",
+  "buyable_price", "appraisal_value", "property_tax_yen",
+  "city_planning_tax_yen", "zoning", "building_coverage", "floor_area_ratio",
+  "occupancy", "price_reduced", "notes",
 ].join(",");
 
 const EMPTY_AUCTION = {
   case_no: "", court: "", item_no: "1", pref: "", city: "", address: "",
   type: "その他", min_price_man: "", deposit_man: "", bid_start: "", bid_end: "",
   open_date: "", built_year: "", floor_area: "", land_area: "", bit_url: "",
+  buyable_price_man: "", appraisal_value_man: "", property_tax_yen: "",
+  city_planning_tax_yen: "", zoning: "", building_coverage: "",
+  floor_area_ratio: "", occupancy: "", price_reduced: "", notes: "",
 };
 
 const csvCell = (value) => {
@@ -111,7 +131,7 @@ export function auctionImportId(form) {
 
 export function auctionFormCsv(form) {
   const manToYen = (value) => value === "" || value == null
-    ? "" : Math.max(0, Math.floor(Number(value) * 10000));
+    ? "" : Math.max(0, Math.round(Number(value) * 10000));
   const values = [
     auctionImportId(form), form.court, form.case_no,
     Math.max(1, Math.floor(Number(form.item_no) || 1)),
@@ -119,6 +139,10 @@ export function auctionFormCsv(form) {
     manToYen(form.min_price_man), manToYen(form.deposit_man),
     form.bid_start, form.bid_end, form.open_date, form.built_year,
     form.floor_area, form.land_area, form.bit_url, "true",
+    manToYen(form.buyable_price_man), manToYen(form.appraisal_value_man),
+    form.property_tax_yen, form.city_planning_tax_yen, form.zoning,
+    form.building_coverage, form.floor_area_ratio, form.occupancy,
+    form.price_reduced, form.notes,
   ];
   return CSV_HEADER + "\n" + values.map(csvCell).join(",");
 }
@@ -140,6 +164,26 @@ async function adminFetch(options = {}) {
   return data;
 }
 
+async function parseAuctionPdf(images, options = {}) {
+  const token = await accessToken();
+  if (!token) throw new Error("ログインが必要です");
+  const response = await fetch("/api/auction-parse-pdf", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+    },
+    body: JSON.stringify({ images }),
+    signal: options.signal,
+  });
+  const data = await response.json().catch(() => null);
+  if (!data) throw new Error("PDF解析サーバーから応答を読み取れませんでした");
+  if (!response.ok) {
+    return { ok: false, stage: "api", error: data.error || "PDFの解析に失敗しました" };
+  }
+  return data;
+}
+
 function AdminImportSection() {
   const [admin, setAdmin] = useState(null);
   const [items, setItems] = useState([]);
@@ -155,6 +199,39 @@ function AdminImportSection() {
   const setField = (key) => (e) => setForm((current) => ({
     ...current, [key]: e.target.value,
   }));
+
+  const applyPdfResult = (data) => {
+    const text = (value) => value == null ? "" : String(value);
+    const yenToMan = (value) => value == null ? "" : String(Number(value) / 10000);
+    setForm((current) => ({
+      ...current,
+      case_no: text(data.case_no),
+      court: text(data.court),
+      pref: text(data.pref),
+      city: text(data.city),
+      address: text(data.address),
+      type: data.type || current.type || "その他",
+      min_price_man: yenToMan(data.min_price),
+      buyable_price_man: yenToMan(data.buyable_price),
+      deposit_man: yenToMan(data.deposit),
+      bid_start: text(data.bid_start),
+      bid_end: text(data.bid_end),
+      open_date: text(data.open_date),
+      built_year: text(data.built_year),
+      floor_area: text(data.floor_area),
+      land_area: text(data.land_area),
+      appraisal_value_man: yenToMan(data.appraisal_value),
+      property_tax_yen: text(data.property_tax_yen),
+      city_planning_tax_yen: text(data.city_planning_tax_yen),
+      zoning: text(data.zoning),
+      building_coverage: text(data.building_coverage),
+      floor_area_ratio: text(data.floor_area_ratio),
+      occupancy: text(data.occupancy),
+      price_reduced: data.price_reduced == null ? "" : String(data.price_reduced),
+      notes: text(data.notes),
+    }));
+    setFormMessage({ ok: true, text: "PDF解析結果を反映しました。原本との照合後に登録してください" });
+  };
 
   const refresh = async () => {
     try {
@@ -281,6 +358,8 @@ function AdminImportSection() {
         BITの公表情報を確認のうえ転記してください。3点セットPDFの保存・転載は行わず、リンクのみ登録します。
       </div>
 
+      <AuctionPdfIntake request={parseAuctionPdf} onExtract={applyPdfResult} />
+
       <AuctionPasteImport request={adminFetch} onImported={refresh} />
 
       <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 10px" }}>
@@ -314,9 +393,13 @@ function AdminImportSection() {
           </span>
         </label>
         {field("売却基準価額（万円）", "min_price_man",
-          { type: "number", min: 0, step: 1 })}
+          { type: "number", min: 0, step: "0.01" })}
+        {field("入札下限・買受可能価額（万円・任意）", "buyable_price_man",
+          { type: "number", min: 0, step: "0.01" })}
         {field("買受申出保証額（万円・任意）", "deposit_man",
-          { type: "number", min: 0, step: 1 })}
+          { type: "number", min: 0, step: "0.01" })}
+        {field("評価額（万円・任意）", "appraisal_value_man",
+          { type: "number", min: 0, step: "0.01" })}
         {field("入札開始", "bid_start", { type: "date" })}
         {field("入札終了", "bid_end", { type: "date" })}
         {field("開札日", "open_date", { type: "date" })}
@@ -326,8 +409,33 @@ function AdminImportSection() {
           { type: "number", min: 0, step: "0.01" })}
         {field("土地面積㎡（任意）", "land_area",
           { type: "number", min: 0, step: "0.01" })}
+        {field("固定資産税（円・任意）", "property_tax_yen",
+          { type: "number", min: 0, step: 1 })}
+        {field("都市計画税（円・任意）", "city_planning_tax_yen",
+          { type: "number", min: 0, step: 1 })}
+        {field("用途地域（任意）", "zoning")}
+        {field("建ぺい率%（任意）", "building_coverage",
+          { type: "number", min: 0, step: "0.01" })}
+        {field("容積率%（任意）", "floor_area_ratio",
+          { type: "number", min: 0, step: "0.01" })}
+        <label style={labelSt}>売却基準価額の変更
+          <select value={form.price_reduced} onChange={setField("price_reduced")}
+            style={{ ...inputSt, marginTop: 3 }}>
+            <option value="">不明</option>
+            <option value="true">あり</option>
+            <option value="false">なし</option>
+          </select>
+        </label>
         {field("BITの物件URL*", "bit_url",
           { type: "url", required: true, placeholder: "https://www.bit.courts.go.jp/..." })}
+        <label style={{ ...labelSt, gridColumn: "1 / -1" }}>占有状況（任意・80字以内）
+          <textarea value={form.occupancy} onChange={setField("occupancy")} maxLength={80}
+            style={{ ...inputSt, marginTop: 3, minHeight: 58, resize: "vertical" }} />
+        </label>
+        <label style={{ ...labelSt, gridColumn: "1 / -1" }}>注記（任意・80字以内）
+          <textarea value={form.notes} onChange={setField("notes")} maxLength={80}
+            style={{ ...inputSt, marginTop: 3, minHeight: 58, resize: "vertical" }} />
+        </label>
       </div>
       <button type="button" onClick={submitForm} disabled={formBusy}
         style={{ ...btnSt(T.teal), marginTop: 12, opacity: formBusy ? 0.6 : 1 }}>
@@ -415,18 +523,26 @@ function AdminImportSection() {
   );
 }
 
-function Checklist() {
+function Checklist({ occupancy, embedded = false }) {
   return (
-    <section style={{ ...cardSt, marginTop: 14 }}>
-      <h2 style={h2St}>3点セット確認チェックリスト</h2>
+    <section style={embedded
+      ? { marginTop: 10, padding: 10, background: "#F9FBFC", borderRadius: 8 }
+      : { ...cardSt, marginTop: 14 }}>
+      <h2 style={embedded ? { ...h2St, fontSize: 13 } : h2St}>3点セット確認チェックリスト</h2>
       <div style={{ display: "grid", gap: 8,
         gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))" }}>
         {CHECK_ITEMS.map((label) => (
-          <label key={label} style={{ display: "flex", alignItems: "center", gap: 8,
+          <label key={label} style={{ display: "flex", alignItems: "flex-start", gap: 8,
             padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
             fontSize: 12.5, color: T.ink, cursor: "pointer" }}>
-            <input type="checkbox" />
-            {label}
+            <input type="checkbox" style={{ marginTop: 2 }} />
+            <span>
+              <span>{label}</span>
+              {label === "占有者の有無" && occupancy && (
+                <span style={{ display: "block", marginTop: 3, color: T.real,
+                  fontSize: 11.5, lineHeight: 1.5 }}>注記: {occupancy}</span>
+              )}
+            </span>
           </label>
         ))}
       </div>
@@ -439,6 +555,9 @@ function Checklist() {
 
 function AuctionCard({ item, followed, onBid, onToggleFollow }) {
   const location = [item.pref, item.city].filter(Boolean).join("");
+  const appraisalRatio = Number(item.appraisal_value) > 0 && Number.isFinite(Number(item.min_price))
+    ? Math.round((Number(item.min_price) / Number(item.appraisal_value)) * 1000) / 10
+    : null;
   return (
     <article style={{ border: `1px solid ${T.line}`, borderRadius: 12,
       padding: 14, background: "#FFF", boxShadow: "0 6px 18px rgba(31,58,82,.05)" }}>
@@ -453,6 +572,12 @@ function AuctionCard({ item, followed, onBid, onToggleFollow }) {
               <span style={{ fontSize: 10.5, fontWeight: 800, color: "#FFF",
                 background: T.real, padding: "2px 8px", borderRadius: 10 }}>NEW</span>
             )}
+            {item.price_reduced && (
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: "#FFF",
+                background: "#A33A2A", padding: "2px 8px", borderRadius: 10 }}>
+                再売却(減価あり)
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4 }}>
             {[item.court, item.case_no,
@@ -462,11 +587,18 @@ function AuctionCard({ item, followed, onBid, onToggleFollow }) {
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10.5, color: T.sub }}>売却基準価額</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: T.real }}>{yen(item.min_price)}</div>
+          {appraisalRatio != null && (
+            <div style={{ fontSize: 11, color: T.sub }}>評価額比 {appraisalRatio}%</div>
+          )}
         </div>
       </div>
 
       <div style={{ display: "grid", gap: 8, marginTop: 12,
         gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+        <div style={{ padding: "8px 10px", borderRadius: 8, background: "#F7F9FB" }}>
+          <div style={{ fontSize: 10.5, color: T.sub }}>入札下限(買受可能価額)</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700 }}>{yen(item.buyable_price)}</div>
+        </div>
         <div style={{ padding: "8px 10px", borderRadius: 8, background: "#F7F9FB" }}>
           <div style={{ fontSize: 10.5, color: T.sub }}>入札期間</div>
           <div style={{ fontSize: 12.5, fontWeight: 700 }}>
@@ -482,6 +614,13 @@ function AuctionCard({ item, followed, onBid, onToggleFollow }) {
           <div style={{ fontSize: 12.5, fontWeight: 700 }}>{yen(item.deposit)}</div>
         </div>
       </div>
+
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ color: T.navy, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+          この物件の3点セット確認
+        </summary>
+        <Checklist occupancy={item.occupancy} embedded />
+      </details>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12,
         alignItems: "center" }}>
@@ -624,7 +763,6 @@ export default function AuctionTab({
         </section>
       )}
 
-      <Checklist />
       <div style={{ fontSize: 11.5, color: T.real, lineHeight: 1.7,
         padding: "0 4px 14px" }}>
         競売には引渡し・占有・瑕疵のリスクがあり、3点セットの精読と現地確認が不可欠です

@@ -2458,9 +2458,23 @@ export default function App() {
 
   const simulateAuction = (item) => {
     const priceMan = Number(item.min_price) / 10000;
-    if (Number.isFinite(priceMan) && priceMan > 0) {
-      setP((current) => ({ ...current, price: priceMan }));
-    }
+    const propertyTax = Number(item.property_tax_yen);
+    const cityPlanningTax = Number(item.city_planning_tax_yen);
+    const builtYear = Number(item.built_year);
+    setP((current) => {
+      const next = { ...current };
+      if (Number.isFinite(priceMan) && priceMan > 0) next.price = priceMan;
+      if (item.property_tax_yen != null && item.city_planning_tax_yen != null
+          && Number.isFinite(propertyTax) && Number.isFinite(cityPlanningTax)) {
+        next.tax = Math.max(0, propertyTax + cityPlanningTax);
+      }
+      const legalLife = item.type === "マンション" ? 47 : item.type === "戸建て" ? 22 : null;
+      if (legalLife && Number.isInteger(builtYear) && builtYear > 0) {
+        const age = Math.max(0, new Date().getFullYear() - builtYear);
+        next.depYears = Math.max(0, legalLife - age);
+      }
+      return next;
+    });
     setArea([item.pref, item.city].filter(Boolean).join(""));
     setPtype(item.type === "マンション"
       ? "中古区分マンション" : item.type === "戸建て" ? "中古戸建て" : item.type || "競売物件");
@@ -2976,7 +2990,7 @@ export default function App() {
                  hint="仲介・登記・取得税等(現金)" />
           <Field label="建物割合" help="物件価格のうち建物部分の比率。土地は減価償却できないため、この割合が節税効果(償却費)の大きさを決めます。" value={p.bldgRatio} onChange={set("bldgRatio")} unit="%" step={5} min={0}
                  hint="減価償却の対象(残りは土地)" />
-          <Field label="残存償却年数" help="減価償却を計上できる残り年数。切れた年から帳簿上の利益が急増して税負担が跳ね上がる「デッドクロス」の引き金になります。" value={p.depYears} onChange={set("depYears")} unit="年" step={1} min={1}
+          <Field label="残存償却年数" help="減価償却を計上できる残り年数。切れた年から帳簿上の利益が急増して税負担が跳ね上がる「デッドクロス」の引き金になります。" value={p.depYears} onChange={set("depYears")} unit="年" step={1} min={0}
                  hint="RC47年/木造22年から築年数を控除" />
         </Section>
 

@@ -59,21 +59,28 @@ async function renderPages(pdf, pages, quality, signal, setProgress) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     setProgress("PDFを画像に変換しています（" + (index + 1) + "/" + pages.length + "ページ）");
     const page = await pdf.getPage(pages[index]);
-    const baseViewport = page.getViewport({ scale: 1 });
-    const scale = MAX_WIDTH / Math.max(1, baseViewport.width);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.floor(viewport.width));
-    canvas.height = Math.max(1, Math.floor(viewport.height));
-    const context = canvas.getContext("2d", { alpha: false });
-    if (!context) throw new Error("ページ画像を生成できませんでした");
-    await page.render({ canvasContext: context, viewport }).promise;
-    const blob = await canvasJpeg(canvas, quality);
-    const data = await rawBase64(blob);
-    images.push({ data, bytes: blob.size });
-    canvas.width = 1;
-    canvas.height = 1;
-    page.cleanup();
+    let canvas = null;
+    try {
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = MAX_WIDTH / Math.max(1, baseViewport.width);
+      const viewport = page.getViewport({ scale });
+      canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.floor(viewport.width));
+      canvas.height = Math.max(1, Math.floor(viewport.height));
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("ページ画像を生成できませんでした");
+      await page.render({ canvasContext: context, viewport }).promise;
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const blob = await canvasJpeg(canvas, quality);
+      const data = await rawBase64(blob);
+      images.push({ data, bytes: blob.size });
+    } finally {
+      if (canvas) {
+        canvas.width = 1;
+        canvas.height = 1;
+      }
+      page.cleanup();
+    }
   }
   return images;
 }
@@ -126,6 +133,7 @@ export default function AuctionPdfIntake({ request, onExtract }) {
     setError("");
     setMessage("PDFを読み込んでいます");
     let pdf = null;
+    let rendered = [];
     try {
       const pdfjs = await loadPdfJs();
       const data = new Uint8Array(await file.arrayBuffer());
@@ -134,9 +142,10 @@ export default function AuctionPdfIntake({ request, onExtract }) {
         throw new Error("評価書の開始ページがPDFのページ数を超えています");
       }
       const pages = selectedPages(pdf.numPages, start);
-      let rendered = await renderPages(pdf, pages, 0.65, controller.signal, setMessage);
+      rendered = await renderPages(pdf, pages, 0.65, controller.signal, setMessage);
       if (!fitsLimits(rendered)) {
         setMessage("送信サイズを調整しています");
+        rendered.length = 0;
         rendered = await renderPages(pdf, pages, 0.5, controller.signal, setMessage);
       }
       if (!fitsLimits(rendered)) {
@@ -155,7 +164,9 @@ export default function AuctionPdfIntake({ request, onExtract }) {
       setMessage("");
       setError(caught && caught.message ? caught.message : "PDFの解析に失敗しました");
     } finally {
+      rendered.length = 0;
       if (pdf) await pdf.destroy().catch(() => {});
+      if (fileRef.current) fileRef.current.value = "";
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }

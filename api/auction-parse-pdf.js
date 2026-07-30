@@ -80,7 +80,7 @@ async function requireAdmin(req, signal) {
     throw new StageError("auth", "認証に失敗しました。再ログインしてください", 401);
   }
 
-  const user = await response.json().catch(() => null);
+  const user = await readJson(response);
   if (!user || !user.id || !user.email) {
     throw new StageError("auth", "認証に失敗しました", 401);
   }
@@ -160,6 +160,15 @@ function stripCodeFence(text) {
   return value;
 }
 
+async function readJson(response) {
+  try {
+    return await response.json();
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
+    return null;
+  }
+}
+
 function cleanText(value, maxLength = 200) {
   if (value === null || value === undefined || value === "") return null;
   return String(value).replace(/\s+/g, " ").trim().slice(0, maxLength) || null;
@@ -170,20 +179,29 @@ function cleanSummary(value) {
   if (!text) return null;
   return text
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[個人情報省略]")
-    .replace(/(氏名|所有者名|占有者名)\s*[:：]?\s*[^、。]{1,30}/g, "$1[個人情報省略]")
+    .replace(/(氏名|所有者名|占有者名|債務者名|債権者名)\s*[:：]?\s*[^、。]{1,30}/g,
+      "$1[個人情報省略]")
+    .replace(/(所有者|占有者|債務者|債権者)\s+([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}・]{2,12})(?=[がはを、。\s]|$)/gu,
+      "$1[個人情報省略]")
+    .replace(/(所有者|占有者|債務者|債権者)\s*は\s*([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}・]{2,12})(?=[がを、。\s]|$)/gu,
+      "$1は[個人情報省略]")
     .replace(/(?:0\d{1,4}[-ー−]?\d{1,4}[-ー−]?\d{3,4})/g, "[個人情報省略]")
     .slice(0, 80);
 }
 
-function numberOrNull(value, integer = false) {
+function numberOrNull(value, options = {}) {
   if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !/^\d+(?:\.\d+)?$/.test(value.trim())) return null;
   const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) return null;
-  return integer ? Math.round(number) : number;
+  const max = options.max == null ? Number.MAX_SAFE_INTEGER : options.max;
+  if (!Number.isFinite(number) || number < 0 || number > max) return null;
+  if (options.integer && !Number.isSafeInteger(number)) return null;
+  return number;
 }
 
 function yearOrNull(value) {
-  const year = numberOrNull(value, true);
+  const year = numberOrNull(value, { integer: true, max: 2200 });
   return year && year >= 1800 && year <= 2200 ? year : null;
 }
 
@@ -206,21 +224,23 @@ function sanitizeData(raw) {
     city: cleanText(raw.city, 100),
     address: cleanText(raw.address, 200),
     type: ALLOWED_TYPES.has(type) ? type : null,
-    min_price: numberOrNull(raw.min_price, true),
-    buyable_price: numberOrNull(raw.buyable_price, true),
-    deposit: numberOrNull(raw.deposit, true),
+    min_price: numberOrNull(raw.min_price, { integer: true }),
+    buyable_price: numberOrNull(raw.buyable_price, { integer: true }),
+    deposit: numberOrNull(raw.deposit, { integer: true }),
     bid_start: dateOrNull(raw.bid_start),
     bid_end: dateOrNull(raw.bid_end),
     open_date: dateOrNull(raw.open_date),
     built_year: yearOrNull(raw.built_year),
-    floor_area: numberOrNull(raw.floor_area),
-    land_area: numberOrNull(raw.land_area),
-    appraisal_value: numberOrNull(raw.appraisal_value, true),
-    property_tax_yen: numberOrNull(raw.property_tax_yen, true),
-    city_planning_tax_yen: numberOrNull(raw.city_planning_tax_yen, true),
+    floor_area: numberOrNull(raw.floor_area, { max: 1000000000 }),
+    land_area: numberOrNull(raw.land_area, { max: 1000000000 }),
+    appraisal_value: numberOrNull(raw.appraisal_value, { integer: true }),
+    property_tax_yen: numberOrNull(raw.property_tax_yen,
+      { integer: true, max: 2147483647 }),
+    city_planning_tax_yen: numberOrNull(raw.city_planning_tax_yen,
+      { integer: true, max: 2147483647 }),
     zoning: cleanText(raw.zoning, 100),
-    building_coverage: numberOrNull(raw.building_coverage),
-    floor_area_ratio: numberOrNull(raw.floor_area_ratio),
+    building_coverage: numberOrNull(raw.building_coverage, { max: 10000 }),
+    floor_area_ratio: numberOrNull(raw.floor_area_ratio, { max: 10000 }),
     occupancy: cleanSummary(raw.occupancy),
     price_reduced: typeof raw.price_reduced === "boolean" ? raw.price_reduced : null,
     notes: cleanSummary(raw.notes),
@@ -258,10 +278,10 @@ async function extractAuction(images, signal) {
     throw new StageError("api", "AI解析サービスに接続できませんでした");
   }
 
-  const payload = await response.json().catch(() => null);
+  const payload = await readJson(response);
   if (!response.ok) {
-    const upstream = cleanText(payload && payload.error && payload.error.message, 160);
-    throw new StageError("api", upstream || "AI解析サービスでエラーが発生しました");
+    throw new StageError("api", "AI解析サービスでエラーが発生しました（HTTP "
+      + response.status + "）");
   }
   const text = payload && Array.isArray(payload.content)
     ? payload.content.filter((block) => block && block.type === "text").map((block) => block.text).join("")
@@ -295,7 +315,7 @@ export default async function handler(req, res) {
     const data = await extractAuction(images, controller.signal);
     return respond(res, { ok: true, data });
   } catch (error) {
-    if (error && error.name === "AbortError") {
+    if (controller.signal.aborted || (error && error.name === "AbortError")) {
       return fail(res, "timeout", "解析がタイムアウトしました。送信ページ数を減らして再試行してください");
     }
     if (error instanceof StageError) {

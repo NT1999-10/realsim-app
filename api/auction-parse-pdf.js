@@ -4,8 +4,8 @@
 
 export const config = { maxDuration: 60 };
 
-const MAX_IMAGES = 16;
-const MAX_IMAGE_BYTES = 1024 * 1024;
+const MAX_IMAGES = 12;
+const MAX_IMAGE_BYTES = Math.floor(1.5 * 1024 * 1024);
 const DAILY_LIMIT = 30;
 const API_TIMEOUT_MS = 55000;
 const ALLOWED_TYPES = new Set(["マンション", "戸建て", "土地", "その他"]);
@@ -13,6 +13,8 @@ const rateLimits = globalThis.__auctionPdfParseRateLimits || new Map();
 globalThis.__auctionPdfParseRateLimits = rateLimits;
 
 const EXTRACTION_PROMPT = [
+  "これは日本の裁判所が作成した不動産競売の「3点セット」をスキャンした画像です。薄い印字や罫線があっても、読み取れる範囲で正確に抽出してください。数字は桁を誤らないよう特に慎重に読み取ってください。",
+  "notes には物件自体の注意事項のみを記載し、画像品質や抽出可否についての所感は含めないこと。",
   "競売物件の3点セット画像から、以下のJSONスキーマの項目を抽出してください。",
   "1. 以下のJSONのみを返す。前置き・コードブロック記号は不要。",
   "2. 読み取れない項目はnullとし、推測で埋めない。",
@@ -100,7 +102,7 @@ function validateImages(body) {
     throw new StageError("size", "JPEG画像を1枚以上送信してください");
   }
   if (images.length > MAX_IMAGES) {
-    throw new StageError("size", "送信できる画像は16枚までです");
+    throw new StageError("size", "送信できる画像は12枚までです");
   }
 
   return images.map((value, index) => {
@@ -117,7 +119,7 @@ function validateImages(body) {
       throw new StageError("size", (index + 1) + "枚目の画像データが不正です");
     }
     if (bytes.length > MAX_IMAGE_BYTES) {
-      throw new StageError("size", (index + 1) + "枚目が1MBを超えています");
+      throw new StageError("size", (index + 1) + "枚目が1.5MBを超えています");
     }
     if (bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
       throw new StageError("size", (index + 1) + "枚目がJPEG形式ではありません");
@@ -189,6 +191,17 @@ function cleanSummary(value) {
     .slice(0, 80);
 }
 
+function cleanNotes(value) {
+  const text = cleanSummary(value);
+  if (!text) return null;
+  const filtered = text.split(/[。！？]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/(画像|画質|スキャン|印字).*(薄|濃|判読|読取|読み取|抽出|不鮮明|品質)/.test(part))
+    .filter((part) => !/(判読|読取|読み取|抽出).*(困難|不可|できな)/.test(part));
+  return filtered.length ? filtered.join("。").slice(0, 80) : null;
+}
+
 function numberOrNull(value, options = {}) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value !== "number" && typeof value !== "string") return null;
@@ -243,7 +256,7 @@ function sanitizeData(raw) {
     floor_area_ratio: numberOrNull(raw.floor_area_ratio, { max: 10000 }),
     occupancy: cleanSummary(raw.occupancy),
     price_reduced: typeof raw.price_reduced === "boolean" ? raw.price_reduced : null,
-    notes: cleanSummary(raw.notes),
+    notes: cleanNotes(raw.notes),
   };
 }
 

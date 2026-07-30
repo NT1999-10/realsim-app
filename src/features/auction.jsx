@@ -766,6 +766,7 @@ export default function AuctionTab({
         </section>
       )}
 
+      <Checklist />
       <div style={{ fontSize: 11.5, color: T.real, lineHeight: 1.7,
         padding: "0 4px 14px" }}>
         競売には引渡し・占有・瑕疵のリスクがあり、3点セットの精読と現地確認が不可欠です

@@ -171,6 +171,21 @@ export function mapAuctionRow(headers, values, lineNumber) {
     if (!VALID_TYPES.has(type)) {
       throw new Error("typeはマンション/戸建て/土地/その他のいずれかです");
     }
+    const detail = {};
+    const includeDetail = (name, value) => {
+      if (headers.includes(name)) detail[name] = value;
+    };
+    includeDetail("buyable_price", nullableNumber(raw.buyable_price, true));
+    includeDetail("appraisal_value", nullableNumber(raw.appraisal_value, true));
+    includeDetail("property_tax_yen", nullableNumber(raw.property_tax_yen, true));
+    includeDetail("city_planning_tax_yen", nullableNumber(raw.city_planning_tax_yen, true));
+    includeDetail("zoning", nullableText(raw.zoning));
+    includeDetail("building_coverage", nullableNumber(raw.building_coverage));
+    includeDetail("floor_area_ratio", nullableNumber(raw.floor_area_ratio));
+    includeDetail("occupancy", nullableText(raw.occupancy));
+    includeDetail("price_reduced",
+      booleanValue(raw.price_reduced, false, "price_reduced"));
+    includeDetail("notes", nullableText(raw.notes));
     return {
       id: String(raw.id || "").trim() || generatedAuctionId(court, caseNo, itemNo),
       court,
@@ -190,16 +205,7 @@ export function mapAuctionRow(headers, values, lineNumber) {
       land_area: nullableNumber(raw.land_area),
       bit_url: officialBitUrl(bitUrl),
       active: booleanValue(raw.active),
-      buyable_price: nullableNumber(raw.buyable_price, true),
-      appraisal_value: nullableNumber(raw.appraisal_value, true),
-      property_tax_yen: nullableNumber(raw.property_tax_yen, true),
-      city_planning_tax_yen: nullableNumber(raw.city_planning_tax_yen, true),
-      zoning: nullableText(raw.zoning),
-      building_coverage: nullableNumber(raw.building_coverage),
-      floor_area_ratio: nullableNumber(raw.floor_area_ratio),
-      occupancy: nullableText(raw.occupancy),
-      price_reduced: booleanValue(raw.price_reduced, false, "price_reduced"),
-      notes: nullableText(raw.notes),
+      ...detail,
       updated_at: new Date().toISOString(),
     };
   } catch (error) {

@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { T } from "../theme.js";
 import { btnSt } from "../ui.jsx";
 
-const MAX_WIDTH = 1600;
-const MAX_IMAGES = 16;
-const MAX_IMAGE_BYTES = 1024 * 1024;
+const TARGET_WIDTHS = [2000, 1700, 1500];
+const MAX_IMAGES = 12;
+const MAX_IMAGE_BYTES = Math.floor(1.5 * 1024 * 1024);
 const MAX_PAYLOAD_BYTES = Math.floor(3.5 * 1024 * 1024);
+const JPEG_QUALITY = 0.8;
 let pdfJsPromise = null;
 
 function loadPdfJs() {
@@ -23,9 +24,9 @@ function loadPdfJs() {
 
 function selectedPages(totalPages, appraisalStart) {
   const pages = new Set();
-  for (let page = 1; page <= Math.min(8, totalPages); page += 1) pages.add(page);
+  for (let page = 1; page <= Math.min(6, totalPages); page += 1) pages.add(page);
   if (appraisalStart !== null) {
-    for (let page = appraisalStart; page < appraisalStart + 8 && page <= totalPages; page += 1) {
+    for (let page = appraisalStart; page < appraisalStart + 6 && page <= totalPages; page += 1) {
       pages.add(page);
     }
   }
@@ -53,7 +54,50 @@ function rawBase64(blob) {
   });
 }
 
-async function renderPages(pdf, pages, quality, signal, setProgress) {
+function enhanceForOcr(context, width, height) {
+  const image = context.getImageData(0, 0, width, height);
+  const pixels = image.data;
+  const histogram = new Uint32Array(256);
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const gray = Math.max(0, Math.min(255, Math.round(
+      (0.299 * pixels[index]) + (0.587 * pixels[index + 1]) + (0.114 * pixels[index + 2]),
+    )));
+    pixels[index] = gray;
+    pixels[index + 1] = gray;
+    pixels[index + 2] = gray;
+    pixels[index + 3] = 255;
+    histogram[gray] += 1;
+  }
+
+  const pixelCount = width * height;
+  const percentileCount = Math.max(1, Math.floor(pixelCount * 0.02));
+  let lo = 0;
+  let hi = 255;
+  let count = 0;
+  for (; lo < 255; lo += 1) {
+    count += histogram[lo];
+    if (count >= percentileCount) break;
+  }
+  count = 0;
+  for (; hi > 0; hi -= 1) {
+    count += histogram[hi];
+    if (count >= percentileCount) break;
+  }
+
+  if (hi - lo >= 40) {
+    const multiplier = 255 / (hi - lo);
+    for (let index = 0; index < pixels.length; index += 4) {
+      const stretched = Math.max(0, Math.min(255, Math.round((pixels[index] - lo) * multiplier)));
+      pixels[index] = stretched;
+      pixels[index + 1] = stretched;
+      pixels[index + 2] = stretched;
+    }
+  }
+  context.putImageData(image, 0, 0);
+}
+
+async function renderPages(pdf, pages, targetWidth, signal, setProgress) {
   const images = [];
   for (let index = 0; index < pages.length; index += 1) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
@@ -62,16 +106,23 @@ async function renderPages(pdf, pages, quality, signal, setProgress) {
     let canvas = null;
     try {
       const baseViewport = page.getViewport({ scale: 1 });
-      const scale = MAX_WIDTH / Math.max(1, baseViewport.width);
+      // A4 PDFはscale 1で約595px。1以下に丸めず、2000pxまで確実に拡大する。
+      const scale = Math.min(6, targetWidth / Math.max(1, baseViewport.width));
       const viewport = page.getViewport({ scale });
       canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.floor(viewport.width));
       canvas.height = Math.max(1, Math.floor(viewport.height));
       const context = canvas.getContext("2d", { alpha: false });
       if (!context) throw new Error("ページ画像を生成できませんでした");
+      context.fillStyle = "#FFFFFF";
+      context.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: context, viewport }).promise;
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-      const blob = await canvasJpeg(canvas, quality);
+      enhanceForOcr(context, canvas.width, canvas.height);
+      console.log(
+        `[auction-pdf] page ${pages[index]} canvas ${canvas.width}x${canvas.height}px`,
+      );
+      const blob = await canvasJpeg(canvas, JPEG_QUALITY);
       const data = await rawBase64(blob);
       images.push({ data, bytes: blob.size });
     } finally {
@@ -104,12 +155,19 @@ export default function AuctionPdfIntake({ request, onExtract }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [prepared, setPrepared] = useState(null);
   const fileRef = useRef(null);
   const abortRef = useRef(null);
 
   useEffect(() => () => abortRef.current && abortRef.current.abort(), []);
 
-  const parsePdf = async () => {
+  const resetPrepared = () => {
+    setPrepared(null);
+    setMessage("");
+    setError("");
+  };
+
+  const preparePdf = async () => {
     const file = fileRef.current && fileRef.current.files && fileRef.current.files[0];
     if (!file) {
       setError("3点セットPDFを選択してください");
@@ -131,6 +189,7 @@ export default function AuctionPdfIntake({ request, onExtract }) {
     abortRef.current = controller;
     setBusy(true);
     setError("");
+    setPrepared(null);
     setMessage("PDFを読み込んでいます");
     let pdf = null;
     let rendered = [];
@@ -142,18 +201,52 @@ export default function AuctionPdfIntake({ request, onExtract }) {
         throw new Error("評価書の開始ページがPDFのページ数を超えています");
       }
       const pages = selectedPages(pdf.numPages, start);
-      rendered = await renderPages(pdf, pages, 0.65, controller.signal, setMessage);
-      if (!fitsLimits(rendered)) {
-        setMessage("送信サイズを調整しています");
+      for (const width of TARGET_WIDTHS) {
         rendered.length = 0;
-        rendered = await renderPages(pdf, pages, 0.5, controller.signal, setMessage);
+        rendered = await renderPages(pdf, pages, width, controller.signal, setMessage);
+        if (fitsLimits(rendered)) {
+          const bytes = payloadBytes(rendered);
+          setPrepared({
+            images: rendered.map((image) => image.data),
+            preview: `data:image/jpeg;base64,${rendered[0].data}`,
+            pageCount: rendered.length,
+            width,
+            bytes,
+          });
+          setMessage("画像を確認してからAI解析を実行してください");
+          rendered = [];
+          return;
+        }
+        if (width !== TARGET_WIDTHS[TARGET_WIDTHS.length - 1]) {
+          setMessage("送信サイズを調整しています");
+        }
       }
-      if (!fitsLimits(rendered)) {
-        throw new Error("送信サイズが大きすぎます。評価書の開始ページを空欄にするなど、ページ数を減らしてください");
-      }
+      throw new Error("ページ数を減らしてください");
+    } catch (caught) {
+      if (caught && caught.name === "AbortError") return;
+      setMessage("");
+      setError(caught && caught.message ? caught.message : "PDFの解析に失敗しました");
+    } finally {
+      rendered.length = 0;
+      if (pdf) await pdf.destroy().catch(() => {});
+      if (abortRef.current === controller) abortRef.current = null;
+      setBusy(false);
+    }
+  };
 
-      setMessage("解析中です。30秒ほどかかります");
-      const result = await request(rendered.map((image) => image.data), { signal: controller.signal });
+  const parsePrepared = async () => {
+    if (!prepared || !prepared.images.length) {
+      setError("先にPDFを画像化して画質を確認してください");
+      return;
+    }
+    abortRef.current && abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
+    setError("");
+    setMessage("解析中です。30秒ほどかかります");
+    try {
+      const result = await request(prepared.images, { signal: controller.signal });
       if (!result || !result.ok || !result.data) {
         throw new Error((result && result.error) || "PDFの解析に失敗しました");
       }
@@ -164,9 +257,6 @@ export default function AuctionPdfIntake({ request, onExtract }) {
       setMessage("");
       setError(caught && caught.message ? caught.message : "PDFの解析に失敗しました");
     } finally {
-      rendered.length = 0;
-      if (pdf) await pdf.destroy().catch(() => {});
-      if (fileRef.current) fileRef.current.value = "";
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }
@@ -186,7 +276,8 @@ export default function AuctionPdfIntake({ request, onExtract }) {
         </p>
         <label style={{ display: "block", marginTop: 10, fontSize: 12, color: T.sub }}>
           3点セットPDF
-          <input ref={fileRef} type="file" accept="application/pdf" disabled={busy} style={{ ...inputSt, marginTop: 4 }} />
+          <input ref={fileRef} type="file" accept="application/pdf" disabled={busy}
+            onChange={resetPrepared} style={{ ...inputSt, marginTop: 4 }} />
         </label>
         <label style={{ display: "block", marginTop: 10, fontSize: 12, color: T.sub }}>
           評価書の開始ページ（任意・PDFビューアで確認）
@@ -195,23 +286,40 @@ export default function AuctionPdfIntake({ request, onExtract }) {
             min="1"
             step="1"
             value={appraisalStart}
-            onChange={(event) => setAppraisalStart(event.target.value)}
+            onChange={(event) => { setAppraisalStart(event.target.value); resetPrepared(); }}
             placeholder="例: 13"
             disabled={busy}
             style={{ ...inputSt, marginTop: 4 }}
           />
         </label>
         <p style={{ margin: "8px 0 0", color: T.sub, fontSize: 11.5, lineHeight: 1.6 }}>
-          基本1〜8ページと、指定時は評価書の開始ページから8ページをブラウザ内でJPEG化します。PDF原本は送信・保存しません。
+          基本1〜6ページと、指定時は評価書の開始ページから6ページをブラウザ内で高精細JPEG化します。PDF原本は送信・保存しません。
         </p>
         <button
           type="button"
-          onClick={parsePdf}
+          onClick={preparePdf}
           disabled={busy}
           style={{ ...btnSt(T.teal), marginTop: 10, opacity: busy ? 0.65 : 1 }}
         >
-          {busy ? "処理中..." : "PDFを解析して方式Aへ反映"}
+          {busy ? "処理中..." : prepared ? "画像を作り直す" : "PDFを画像化して確認"}
         </button>
+        {prepared && (
+          <div style={{ marginTop: 12 }}>
+            <a href={prepared.preview} target="_blank" rel="noreferrer"
+              title="クリックして原寸表示">
+              <img src={prepared.preview} alt="AIへ送信する1ページ目のプレビュー"
+                style={{ display: "block", width: "100%", maxWidth: 300, border: `1px solid ${T.line}`, borderRadius: 5 }} />
+            </a>
+            <p style={{ margin: "7px 0", color: T.ink, fontSize: 11.5, lineHeight: 1.6 }}>
+              この画質でAIに送信します。文字が読めない場合は解析に失敗します
+              （{prepared.width}px・{prepared.pageCount}枚・{(prepared.bytes / 1024 / 1024).toFixed(2)}MB）
+            </p>
+            <button type="button" onClick={parsePrepared} disabled={busy}
+              style={{ ...btnSt(T.teal), opacity: busy ? 0.65 : 1 }}>
+              {busy ? "解析中..." : "この画質でAI解析して方式Aへ反映"}
+            </button>
+          </div>
+        )}
         {message && <div style={{ marginTop: 9, color: "#087A55", fontSize: 12, fontWeight: 700 }}>{message}</div>}
         {error && <div role="alert" style={{ marginTop: 9, color: "#B42318", fontSize: 12, fontWeight: 700 }}>{error}</div>}
       </div>

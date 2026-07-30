@@ -10,7 +10,8 @@ const CSV_COLUMNS = [
   "min_price", "deposit", "bid_start", "bid_end", "open_date", "built_year",
   "floor_area", "land_area", "bit_url", "active",
   "buyable_price", "appraisal_value", "property_tax_yen",
-  "city_planning_tax_yen", "zoning", "occupancy", "price_reduced", "notes",
+  "city_planning_tax_yen", "zoning", "building_coverage", "floor_area_ratio",
+  "occupancy", "price_reduced", "notes",
 ];
 const REQUIRED_COLUMNS = ["case_no", "bit_url"];
 const VALID_TYPES = new Set(["マンション", "戸建て", "土地", "その他"]);
@@ -125,12 +126,12 @@ function nullableDate(value) {
   return text;
 }
 
-function booleanValue(value, fallback = true) {
+function booleanValue(value, fallback = true, field = "active") {
   const text = String(value == null ? "" : value).trim().toLowerCase();
   if (!text) return fallback;
   if (["true", "1", "yes"].includes(text)) return true;
   if (["false", "0", "no"].includes(text)) return false;
-  throw new Error("activeはtrueまたはfalseで入力してください");
+  throw new Error(field + "はtrueまたはfalseで入力してください");
 }
 
 function officialBitUrl(value) {
@@ -194,8 +195,10 @@ export function mapAuctionRow(headers, values, lineNumber) {
       property_tax_yen: nullableNumber(raw.property_tax_yen, true),
       city_planning_tax_yen: nullableNumber(raw.city_planning_tax_yen, true),
       zoning: nullableText(raw.zoning),
+      building_coverage: nullableNumber(raw.building_coverage),
+      floor_area_ratio: nullableNumber(raw.floor_area_ratio),
       occupancy: nullableText(raw.occupancy),
-      price_reduced: booleanValue(raw.price_reduced, false),
+      price_reduced: booleanValue(raw.price_reduced, false, "price_reduced"),
       notes: nullableText(raw.notes),
       updated_at: new Date().toISOString(),
     };

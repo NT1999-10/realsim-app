@@ -197,7 +197,7 @@ export default function AuctionPdfIntake({ request, onExtract }) {
           type="button"
           onClick={parsePdf}
           disabled={busy}
-          style={{ ...btnSt, marginTop: 10, opacity: busy ? 0.65 : 1 }}
+          style={{ ...btnSt(T.teal), marginTop: 10, opacity: busy ? 0.65 : 1 }}
         >
           {busy ? "処理中..." : "PDFを解析して方式Aへ反映"}
         </button>

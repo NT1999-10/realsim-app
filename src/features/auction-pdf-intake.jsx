@@ -60,7 +60,7 @@ async function renderPages(pdf, pages, quality, signal, setProgress) {
     setProgress("PDFを画像に変換しています（" + (index + 1) + "/" + pages.length + "ページ）");
     const page = await pdf.getPage(pages[index]);
     const baseViewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(1, MAX_WIDTH / baseViewport.width);
+    const scale = MAX_WIDTH / Math.max(1, baseViewport.width);
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.floor(viewport.width));

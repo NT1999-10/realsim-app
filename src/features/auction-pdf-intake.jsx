@@ -2,11 +2,16 @@ import React, { useEffect, useRef, useState } from "react";
 import { T } from "../theme.js";
 import { btnSt } from "../ui.jsx";
 
-const TARGET_WIDTHS = [2000, 1700, 1500];
+const TARGET_WIDTHS = [2000, 1700, 1500, 1300];
 const MAX_IMAGES = 12;
 const MAX_IMAGE_BYTES = Math.floor(1.5 * 1024 * 1024);
 const MAX_PAYLOAD_BYTES = Math.floor(3.5 * 1024 * 1024);
-const JPEG_QUALITY = 0.8;
+const JPEG_QUALITY = 0.85;
+const ENHANCEMENT_LABELS = {
+  none: "なし（原本のまま）",
+  standard: "標準（白飛ばし）",
+  strong: "強（白飛ばし＋ガンマ1.4で文字を濃く）",
+};
 let pdfJsPromise = null;
 
 function loadPdfJs() {
@@ -33,71 +38,68 @@ function selectedPages(totalPages, appraisalStart) {
   return Array.from(pages).slice(0, MAX_IMAGES);
 }
 
-function canvasJpeg(canvas, quality) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("ページ画像の生成に失敗しました"));
-    }, "image/jpeg", quality);
-  });
+function canvasJpeg(canvas) {
+  const src = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  const data = src.slice(src.indexOf(",") + 1);
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return { src, data, bytes: Math.floor(data.length * 3 / 4) - padding };
 }
 
-function rawBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("ページ画像の読み込みに失敗しました"));
-    reader.onload = () => {
-      const value = String(reader.result || "");
-      resolve(value.slice(value.indexOf(",") + 1));
-    };
-    reader.readAsDataURL(blob);
-  });
-}
+export function enhancePixels(source, mode) {
+  if (mode === "none") {
+    return { pixels: source, appliedMode: "none", fellBack: false };
+  }
 
-function enhanceForOcr(context, width, height) {
-  const image = context.getImageData(0, 0, width, height);
-  const pixels = image.data;
+  const pixelCount = source.length / 4;
   const histogram = new Uint32Array(256);
-
-  for (let index = 0; index < pixels.length; index += 4) {
-    const gray = Math.max(0, Math.min(255, Math.round(
-      (0.299 * pixels[index]) + (0.587 * pixels[index + 1]) + (0.114 * pixels[index + 2]),
-    )));
-    pixels[index] = gray;
-    pixels[index + 1] = gray;
-    pixels[index + 2] = gray;
-    pixels[index + 3] = 255;
+  let beforeDark = 0;
+  for (let index = 0; index < source.length; index += 4) {
+    const gray = Math.round(0.299 * source[index] + 0.587 * source[index + 1] + 0.114 * source[index + 2]);
     histogram[gray] += 1;
+    if (gray < 100) beforeDark += 1;
   }
 
-  const pixelCount = width * height;
-  const percentileCount = Math.max(1, Math.floor(pixelCount * 0.02));
-  let lo = 0;
-  let hi = 255;
-  let count = 0;
-  for (; lo < 255; lo += 1) {
-    count += histogram[lo];
-    if (count >= percentileCount) break;
-  }
-  count = 0;
-  for (; hi > 0; hi -= 1) {
-    count += histogram[hi];
-    if (count >= percentileCount) break;
-  }
-
-  if (hi - lo >= 40) {
-    const multiplier = 255 / (hi - lo);
-    for (let index = 0; index < pixels.length; index += 4) {
-      const stretched = Math.max(0, Math.min(255, Math.round((pixels[index] - lo) * multiplier)));
-      pixels[index] = stretched;
-      pixels[index + 1] = stretched;
-      pixels[index + 2] = stretched;
+  const percentileTarget = Math.ceil(pixelCount * 0.9);
+  let cumulative = 0;
+  let white = 255;
+  for (let value = 0; value < histogram.length; value += 1) {
+    cumulative += histogram[value];
+    if (cumulative >= percentileTarget) {
+      white = Math.max(160, value);
+      break;
     }
   }
-  context.putImageData(image, 0, 0);
+
+  const corrected = new Uint8ClampedArray(source);
+  let afterDark = 0;
+  for (let index = 0; index < corrected.length; index += 4) {
+    const gray = 0.299 * source[index] + 0.587 * source[index + 1] + 0.114 * source[index + 2];
+    let value = Math.min(255, Math.max(0, gray * 255 / white));
+    if (mode === "strong") value = 255 * Math.pow(value / 255, 1.4);
+    value = Math.round(Math.min(255, Math.max(0, value)));
+    corrected[index] = value;
+    corrected[index + 1] = value;
+    corrected[index + 2] = value;
+    if (value < 100) afterDark += 1;
+  }
+
+  if (beforeDark > 0 && afterDark < beforeDark * 0.5) {
+    return { pixels: source, appliedMode: "none", fellBack: true, beforeDark, afterDark, white };
+  }
+  return { pixels: corrected, appliedMode: mode, fellBack: false, beforeDark, afterDark, white };
 }
 
-async function renderPages(pdf, pages, targetWidth, signal, setProgress) {
+function enhanceCanvas(context, width, height, mode) {
+  if (mode === "none") return { appliedMode: "none", fellBack: false };
+  const original = context.getImageData(0, 0, width, height);
+  const result = enhancePixels(original.data, mode);
+  if (!result.fellBack) {
+    context.putImageData(new ImageData(result.pixels, width, height), 0, 0);
+  }
+  return result;
+}
+
+async function renderPages(pdf, pages, targetWidth, mode, signal, setProgress) {
   const images = [];
   for (let index = 0; index < pages.length; index += 1) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
@@ -116,15 +118,22 @@ async function renderPages(pdf, pages, targetWidth, signal, setProgress) {
       if (!context) throw new Error("ページ画像を生成できませんでした");
       context.fillStyle = "#FFFFFF";
       context.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: context, viewport }).promise;
+      const renderTask = page.render({ canvasContext: context, viewport });
+      await renderTask.promise;
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-      enhanceForOcr(context, canvas.width, canvas.height);
+      const enhancement = enhanceCanvas(context, canvas.width, canvas.height, mode);
       console.log(
         `[auction-pdf] page ${pages[index]} canvas ${canvas.width}x${canvas.height}px`,
       );
-      const blob = await canvasJpeg(canvas, JPEG_QUALITY);
-      const data = await rawBase64(blob);
-      images.push({ data, bytes: blob.size });
+      const encoded = canvasJpeg(canvas);
+      images.push({
+        ...encoded,
+        page: pages[index],
+        width: canvas.width,
+        height: canvas.height,
+        mode: enhancement.appliedMode,
+        fellBack: enhancement.fellBack,
+      });
     } finally {
       if (canvas) {
         canvas.width = 1;
@@ -152,6 +161,7 @@ const inputSt = {
 
 export default function AuctionPdfIntake({ request, onExtract }) {
   const [appraisalStart, setAppraisalStart] = useState("");
+  const [enhancement, setEnhancement] = useState("standard");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -167,7 +177,8 @@ export default function AuctionPdfIntake({ request, onExtract }) {
     setError("");
   };
 
-  const preparePdf = async () => {
+  const preparePdf = async (modeOverride, preferredWidth) => {
+    const mode = typeof modeOverride === "string" ? modeOverride : enhancement;
     const file = fileRef.current && fileRef.current.files && fileRef.current.files[0];
     if (!file) {
       setError("3点セットPDFを選択してください");
@@ -201,23 +212,28 @@ export default function AuctionPdfIntake({ request, onExtract }) {
         throw new Error("評価書の開始ページがPDFのページ数を超えています");
       }
       const pages = selectedPages(pdf.numPages, start);
-      for (const width of TARGET_WIDTHS) {
+      console.log("[auction-pdf] rendered pages:", pages);
+      const widths = Number.isFinite(preferredWidth)
+        ? [preferredWidth, ...TARGET_WIDTHS.filter((width) => width < preferredWidth)]
+        : TARGET_WIDTHS;
+      for (const width of widths) {
         rendered.length = 0;
-        rendered = await renderPages(pdf, pages, width, controller.signal, setMessage);
+        rendered = await renderPages(pdf, pages, width, mode, controller.signal, setMessage);
         if (fitsLimits(rendered)) {
           const bytes = payloadBytes(rendered);
           setPrepared({
             images: rendered.map((image) => image.data),
-            preview: `data:image/jpeg;base64,${rendered[0].data}`,
+            pages: rendered,
             pageCount: rendered.length,
             width,
             bytes,
+            requestedMode: mode,
           });
           setMessage("画像を確認してからAI解析を実行してください");
           rendered = [];
           return;
         }
-        if (width !== TARGET_WIDTHS[TARGET_WIDTHS.length - 1]) {
+        if (width !== widths[widths.length - 1]) {
           setMessage("送信サイズを調整しています");
         }
       }
@@ -295,6 +311,24 @@ export default function AuctionPdfIntake({ request, onExtract }) {
         <p style={{ margin: "8px 0 0", color: T.sub, fontSize: 11.5, lineHeight: 1.6 }}>
           基本1〜6ページと、指定時は評価書の開始ページから6ページをブラウザ内で高精細JPEG化します。PDF原本は送信・保存しません。
         </p>
+        <label style={{ display: "block", marginTop: 10, fontSize: 12, color: T.sub }}>
+          画質補正
+          <select
+            value={enhancement}
+            disabled={busy}
+            onChange={(event) => {
+              const nextMode = event.target.value;
+              setEnhancement(nextMode);
+              if (fileRef.current?.files?.[0]) void preparePdf(nextMode, prepared?.width);
+              else resetPrepared();
+            }}
+            style={{ ...inputSt, marginTop: 4 }}
+          >
+            <option value="none">なし（原本のまま）</option>
+            <option value="standard">標準（白飛ばし）</option>
+            <option value="strong">強（白飛ばし＋ガンマ1.4で文字を濃く）</option>
+          </select>
+        </label>
         <button
           type="button"
           onClick={preparePdf}
@@ -305,11 +339,23 @@ export default function AuctionPdfIntake({ request, onExtract }) {
         </button>
         {prepared && (
           <div style={{ marginTop: 12 }}>
-            <a href={prepared.preview} target="_blank" rel="noreferrer"
-              title="クリックして原寸表示">
-              <img src={prepared.preview} alt="AIへ送信する1ページ目のプレビュー"
-                style={{ display: "block", width: "100%", maxWidth: 300, border: `1px solid ${T.line}`, borderRadius: 5 }} />
-            </a>
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+              {prepared.pages.map((image) => (
+                <div key={image.page} style={{ flex: "0 0 480px", maxWidth: "88vw" }}>
+                  <a href={image.src} target="_blank" rel="noreferrer" title="クリックして原寸表示">
+                    <img
+                      src={image.src}
+                      alt={`AIへ送信する${image.page}ページ目のプレビュー`}
+                      style={{ display: "block", width: "100%", maxWidth: 480, border: `1px solid ${T.line}`, borderRadius: 5 }}
+                    />
+                  </a>
+                  <div style={{ marginTop: 5, color: T.sub, fontSize: 11, lineHeight: 1.5 }}>
+                    {image.width}px × {image.height}px / {Math.round(image.bytes / 1024)}KB / 補正: {image.fellBack ? "なし（自動フォールバック）" : ENHANCEMENT_LABELS[image.mode]}
+                    <br />クリックで原寸表示
+                  </div>
+                </div>
+              ))}
+            </div>
             <p style={{ margin: "7px 0", color: T.ink, fontSize: 11.5, lineHeight: 1.6 }}>
               この画質でAIに送信します。文字が読めない場合は解析に失敗します
               （{prepared.width}px・{prepared.pageCount}枚・{(prepared.bytes / 1024 / 1024).toFixed(2)}MB）
@@ -326,3 +372,4 @@ export default function AuctionPdfIntake({ request, onExtract }) {
     </details>
   );
 }
+

@@ -3,7 +3,6 @@ import { supabase, authEnabled } from "../auth.js";
 import { T } from "../theme.js";
 import { cardSt, h2St, btnSt } from "../ui.jsx";
 import AuctionPasteImport from "./auction-paste-ui.jsx";
-import AuctionPdfIntake from "./auction-pdf-intake.jsx";
 
 const PREFECTURES = [
   "", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
@@ -164,76 +163,18 @@ async function adminFetch(options = {}) {
   return data;
 }
 
-async function parseAuctionPdf(images, options = {}) {
-  const token = await accessToken();
-  if (!token) throw new Error("ログインが必要です");
-  const response = await fetch("/api/auction-parse-pdf", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer " + token,
-    },
-    body: JSON.stringify({ images }),
-    signal: options.signal,
-  });
-  const data = await response.json().catch(() => null);
-  if (!data) throw new Error("PDF解析サーバーから応答を読み取れませんでした");
-  if (!response.ok) {
-    return { ok: false, stage: "api", error: data.error || "PDFの解析に失敗しました" };
-  }
-  return data;
-}
-
 function AdminImportSection() {
   const [admin, setAdmin] = useState(null);
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(EMPTY_AUCTION);
-  const [csvText, setCsvText] = useState("");
   const [formMessage, setFormMessage] = useState(null);
-  const [bulkMessage, setBulkMessage] = useState(null);
   const [listMessage, setListMessage] = useState(null);
   const [formBusy, setFormBusy] = useState(false);
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [listBusy, setListBusy] = useState(false);
 
   const setField = (key) => (e) => setForm((current) => ({
     ...current, [key]: e.target.value,
   }));
-
-  const applyPdfResult = (data) => {
-    const text = (value) => value == null ? "" : String(value);
-    const yenToMan = (value) => value == null ? "" : String(Number(value) / 10000);
-    setForm((current) => ({
-      ...current,
-      item_no: "1",
-      bit_url: "",
-      case_no: text(data.case_no),
-      court: text(data.court),
-      pref: text(data.pref),
-      city: text(data.city),
-      address: text(data.address),
-      type: data.type || "その他",
-      min_price_man: yenToMan(data.min_price),
-      buyable_price_man: yenToMan(data.buyable_price),
-      deposit_man: yenToMan(data.deposit),
-      bid_start: text(data.bid_start),
-      bid_end: text(data.bid_end),
-      open_date: text(data.open_date),
-      built_year: text(data.built_year),
-      floor_area: text(data.floor_area),
-      land_area: text(data.land_area),
-      appraisal_value_man: yenToMan(data.appraisal_value),
-      property_tax_yen: text(data.property_tax_yen),
-      city_planning_tax_yen: text(data.city_planning_tax_yen),
-      zoning: text(data.zoning),
-      building_coverage: text(data.building_coverage),
-      floor_area_ratio: text(data.floor_area_ratio),
-      occupancy: text(data.occupancy),
-      price_reduced: data.price_reduced == null ? "" : String(data.price_reduced),
-      notes: text(data.notes),
-    }));
-    setFormMessage({ ok: true, text: "PDF解析結果を反映しました。原本との照合後に登録してください" });
-  };
 
   const refresh = async () => {
     try {
@@ -260,7 +201,7 @@ function AdminImportSection() {
     }
 
     const csv = auctionFormCsv(form);
-    console.info("[auction-import] 方式A送信ペイロード", {
+    console.info("[auction-import] フォーム送信ペイロード", {
       id: auctionImportId(form),
       csv,
     });
@@ -281,32 +222,6 @@ function AdminImportSection() {
       });
     } finally {
       setFormBusy(false);
-    }
-  };
-
-  const submitBulk = async () => {
-    setBulkMessage(null);
-    if (!csvText.trim()) {
-      setBulkMessage({ ok: false, text: "CSVが未入力です。ヘッダー行とデータ行を貼り付けてください" });
-      return;
-    }
-    setBulkBusy(true);
-    try {
-      const data = await adminFetch({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: csvText }),
-      });
-      setBulkMessage({ ok: true, text: "まとめて登録しました（" + data.imported + "件）" });
-      setCsvText("");
-      await refresh();
-    } catch (error) {
-      setBulkMessage({
-        ok: false,
-        text: "一括登録できませんでした: " + String((error && error.message) || error),
-      });
-    } finally {
-      setBulkBusy(false);
     }
   };
 
@@ -331,18 +246,6 @@ function AdminImportSection() {
     }
   };
 
-  const copyHeader = async () => {
-    try {
-      await navigator.clipboard.writeText(CSV_HEADER);
-      setBulkMessage({ ok: true, text: "ヘッダー行をコピーしました" });
-    } catch {
-      setBulkMessage({
-        ok: false,
-        text: "コピーできませんでした。ヘッダー行を選択してコピーしてください",
-      });
-    }
-  };
-
   if (admin !== true) return null;
 
   const field = (label, key, props = {}) => (
@@ -360,12 +263,10 @@ function AdminImportSection() {
         BITの公表情報を確認のうえ転記してください。3点セットPDFの保存・転載は行わず、リンクのみ登録します。
       </div>
 
-      <AuctionPdfIntake request={parseAuctionPdf} onExtract={applyPdfResult} />
-
       <AuctionPasteImport request={adminFetch} onImported={refresh} />
 
       <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 10px" }}>
-        方式A: フォーム入力（1件修正用）
+        フォームで1件ずつ入力（修正用）
       </h3>
       <div style={{ display: "grid", gap: 10,
         gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
@@ -449,37 +350,6 @@ function AdminImportSection() {
             color: formMessage.ok ? T.good : T.real,
             background: formMessage.ok ? "rgba(35,139,91,.08)" : "rgba(209,75,50,.08)" }}>
           {formMessage.text}
-        </div>
-      )}
-
-      <div style={{ borderTop: `1px dashed ${T.line}`, margin: "18px 0 14px" }} />
-      <h3 style={{ fontSize: 14, color: T.navy, margin: "0 0 8px" }}>
-        方式B: CSV貼り付け（まとめて登録）
-      </h3>
-      <div style={{ display: "flex", gap: 8, alignItems: "start", marginBottom: 8 }}>
-        <code style={{ flex: 1, padding: "8px 10px", borderRadius: 7,
-          background: "#F1F4F7", fontSize: 10.5, overflowWrap: "anywhere" }}>
-          {CSV_HEADER}
-        </code>
-        <button type="button" onClick={copyHeader}
-          style={{ ...btnSt(T.sub), flexShrink: 0 }}>コピー</button>
-      </div>
-      <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)}
-        placeholder="ヘッダー行付きCSVを貼り付けてください"
-        style={{ ...inputSt, minHeight: 150, fontFamily: "monospace", resize: "vertical" }} />
-      <button type="button" disabled={bulkBusy || !csvText.trim()}
-        onClick={submitBulk}
-        style={{ ...btnSt(T.navy), marginTop: 8,
-          opacity: bulkBusy || !csvText.trim() ? 0.5 : 1 }}>
-        {bulkBusy ? "処理中…" : "まとめて登録"}
-      </button>
-
-      {bulkMessage && (
-        <div role={bulkMessage.ok ? "status" : "alert"}
-          style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5,
-            color: bulkMessage.ok ? T.good : T.real,
-            background: bulkMessage.ok ? "rgba(35,139,91,.08)" : "rgba(209,75,50,.08)" }}>
-          {bulkMessage.text}
         </div>
       )}
 
@@ -767,6 +637,7 @@ export default function AuctionTab({
       )}
 
       <Checklist />
+
       <div style={{ fontSize: 11.5, color: T.real, lineHeight: 1.7,
         padding: "0 4px 14px" }}>
         競売には引渡し・占有・瑕疵のリスクがあり、3点セットの精読と現地確認が不可欠です
@@ -774,3 +645,4 @@ export default function AuctionTab({
     </div>
   );
 }
+

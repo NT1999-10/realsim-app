@@ -121,7 +121,7 @@ export default function AuctionPasteImport({ request, onImported }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8,
         justifyContent: "space-between", flexWrap: "wrap" }}>
         <h3 style={{ fontSize: 15, color: T.navy, margin: 0 }}>
-          方式C: 表を貼り付けて一括登録
+          表・CSVを貼り付けて一括登録（推奨）
         </h3>
         <button type="button" onClick={downloadAuctionTemplate}
           style={btnSt(T.sub)}>CSVテンプレートをダウンロード</button>
@@ -275,3 +275,4 @@ export default function AuctionPasteImport({ request, onImported }) {
     </div>
   );
 }
+

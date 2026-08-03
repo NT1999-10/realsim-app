@@ -93,7 +93,6 @@ id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_
 登録結果は新規・更新・除外件数と行ごとの理由を返します。
 管理者判定は `GET /api/auction-import` がサーバー側で行い、許可メール一覧はブラウザへ返しません。
 
-
 Proユーザーはアプリの「競売」タブから `POST /api/auction-list` を利用します。
 都道府県・種別・基準価額上限で検索でき、フォローした物件の入札開始・終了・開札日は
 運用管理のイベントカレンダーへ自動表示されます。「入札上限を計算」から

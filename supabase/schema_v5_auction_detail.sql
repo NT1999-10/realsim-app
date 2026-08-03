@@ -1,4 +1,4 @@
--- 競売3点セットPDF解析で得る詳細項目（既存環境への追加分）
+-- 競売物件の詳細項目（既存環境への追加分）
 alter table public.auction_items
   add column if not exists buyable_price bigint,
   add column if not exists appraisal_value bigint,

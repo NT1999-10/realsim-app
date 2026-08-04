@@ -129,6 +129,7 @@ export default function AuctionPasteImport({ request, onImported }) {
       <p style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7, margin: "9px 0" }}>
         BITの検索結果ページで表の範囲を選択して Ctrl+C し、そのまま貼り付けてください。
         Excelからの貼り付け(タブ区切り)、CSV、BITからダウンロードしたファイルの中身にも対応します。
+        BITのURLは物件ごとの固定URLではないため、通常は空欄で構いません。
       </p>
       <textarea value={source} onChange={(event) => setSource(event.target.value)}
         placeholder="BITの検索結果表、Excelの表、CSVの内容を貼り付けてください"
@@ -155,7 +156,7 @@ export default function AuctionPasteImport({ request, onImported }) {
               <thead>
                 <tr style={{ color: T.sub, background: "#F1F4F7" }}>
                   {["行番号", "所在地", "種別", "売却基準価額", "入札期間",
-                    "開札日", "bit_url", "判定"].map((label) => (
+                    "開札日", "BIT URL（任意）", "判定"].map((label) => (
                     <th key={label} style={{ textAlign: "left", padding: "7px 6px",
                       borderBottom: "1px solid " + T.line }}>{label}</th>
                   ))}
@@ -245,7 +246,7 @@ export default function AuctionPasteImport({ request, onImported }) {
                         minWidth: 235 }}>
                         <input value={inputValue(row, "bit_url")}
                           onChange={(event) => editRow(index, "bit_url", event.target.value)}
-                          placeholder="https://www.bit.courts.go.jp/..."
+                          placeholder="通常は空欄"
                           style={{ ...inputSt, padding: "5px 6px" }} />
                       </td>
                       <td style={{ padding: 6, borderBottom: "1px solid " + T.line,
@@ -275,4 +276,3 @@ export default function AuctionPasteImport({ request, onImported }) {
     </div>
   );
 }
-

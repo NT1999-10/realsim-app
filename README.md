@@ -36,6 +36,7 @@ Anthropic API              /api/market-price ──▶ 国交省 不動産情報
    - `supabase/schema_v3_market.sql` — 相場照合の7日キャッシュ(既存環境への追加分)
    - `supabase/schema_v4_auction.sql` — 競売物件データ(既存環境への追加分)
    - `supabase/schema_v5_auction_detail.sql` — 競売物件の詳細項目(既存環境への追加分)
+   - `supabase/schema_v6_auction_bit_url_optional.sql` — BIT URLを任意化(既存環境への追加分)
 3. Settings → API で以下を控える:
    - Project URL → `VITE_SUPABASE_URL` と `SUPABASE_URL`
    - anon public キー → `VITE_SUPABASE_ANON_KEY` と `SUPABASE_ANON_KEY`
@@ -67,22 +68,22 @@ PR#5では自動クロールを採用せず、管理者が手動で転記・エ�
 `POST /api/auction-import` で取り込む方式にしています。BITへの自動アクセスや
 3点セットPDFの保存は行いません。
 
-1. `supabase/schema_v4_auction.sql`、続けて `supabase/schema_v5_auction_detail.sql` をSQL Editorで実行
+1. `supabase/schema_v4_auction.sql`、`supabase/schema_v5_auction_detail.sql`、`supabase/schema_v6_auction_bit_url_optional.sql` の順にSQL Editorで実行
 2. Vercelの `ADMIN_EMAILS` に取り込みを許可するログインメールをカンマ区切りで設定
 3. 対象管理者でログインして得たJWTを `Authorization: Bearer <JWT>` に設定
 4. `Content-Type: text/csv` でCSV本文をPOST（JSONの `{"csv":"..."}` も可）
 
-必須列は `case_no` と `bit_url` です。`id` が空の場合は裁判所・事件番号・物件番号から自動生成します。
+必須列は `case_no` のみです。`bit_url` は任意です。`id` が空の場合は裁判所・事件番号・物件番号から自動生成します。
 対応する全列は次のとおりです。
 
 ```csv
 id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_end,open_date,built_year,floor_area,land_area,bit_url,active,buyable_price,appraisal_value,property_tax_yen,city_planning_tax_yen,zoning,building_coverage,floor_area_ratio,occupancy,price_reduced,notes
-,東京地方裁判所,令和8年(ケ)第1号,1,東京都,文京区,文京区○○,マンション,20000000,4000000,2026-08-01,2026-08-08,2026-08-15,2001,45.2,,https://www.bit.courts.go.jp/app/example,true,16000000,25000000,46570,13889,第1種住居地域,60,200,空き家,true,再売却
+,東京地方裁判所,令和8年(ケ)第1号,1,東京都,文京区,文京区○○,マンション,20000000,4000000,2026-08-01,2026-08-08,2026-08-15,2001,45.2,,,true,16000000,25000000,46570,13889,第1種住居地域,60,200,空き家,true,再売却
 ```
 
 - `type`: `マンション` / `戸建て` / `土地` / `その他`
 - 金額は円、日付は `YYYY-MM-DD`
-- `bit_url` は `https://www.bit.courts.go.jp/` 配下のみ許可
+- `bit_url` は任意。入力する場合は `https://www.bit.courts.go.jp/` 配下のみ許可
 - 1回最大1,000件。同一 `id` は更新し、初回登録日時は保持
 - 認証なしは401、許可メール以外は403、`ADMIN_EMAILS` 未設定は501
 
@@ -92,12 +93,14 @@ id,court,case_no,item_no,pref,city,address,type,min_price,deposit,bid_start,bid_
 フォーム入力と、直近20件の確認・無効化も引き続き利用できます。
 登録結果は新規・更新・除外件数と行ごとの理由を返します。
 管理者判定は `GET /api/auction-import` がサーバー側で行い、許可メール一覧はブラウザへ返しません。
+BITは物件ごとの固定URLを持たないため、通常はURLを空欄で登録します。
 
 Proユーザーはアプリの「競売」タブから `POST /api/auction-list` を利用します。
 都道府県・種別・基準価額上限で検索でき、フォローした物件の入札開始・終了・開札日は
 運用管理のイベントカレンダーへ自動表示されます。「入札上限を計算」から
 シミュレーションへ基準価額・税額・築年に応じた残存償却年数を反映し、SashineLabを競売モードで開けます。
 カードには買受可能価額・評価額比・再売却バッジを表示します。
+BITへの主動線は、事件番号をコピーしてBITトップページの検索画面を開く方式です。
 
 ### 5. Stripe(約15分)
 1. https://stripe.com でアカウント作成 → 商品「現実派 Pro」月額¥1,480のサブスクを作成
@@ -115,8 +118,8 @@ Proユーザーはアプリの「競売」タブから `POST /api/auction-list` 
 5. `POST /api/market-price` をProユーザーのJWT付きで実行し、Supabaseの
    `market_cache` に結果が保存されることを確認
 6. 管理者JWT付きで `POST /api/auction-import` を実行し、`auction_items` に結果が保存されることを確認
-7. Proユーザーで競売タブを検索し、BITリンク・入札上限計算・フォロー日程のカレンダー表示を確認
-8. `bit_url` 未入力ではフォームから登録できず、登録後の詳細表示とシミュレーション引き継ぎを確認
+7. Proユーザーで競売タブを検索し、事件番号コピー付きのBIT検索・入札上限計算・フォロー日程のカレンダー表示を確認
+8. `bit_url` 空欄で登録でき、BIT以外のURLは拒否され、登録後の詳細表示とシミュレーション引き継ぎが保たれることを確認
 
 ## ユーザーから見た流れ
 

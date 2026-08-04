@@ -74,6 +74,37 @@ const yen = (value) => value !== null && value !== undefined && value !== ""
   ? Math.round(Number(value)).toLocaleString() + "円" : "—";
 const dateLabel = (value) => value ? String(value).replace(/-/g, "/") : "—";
 
+export async function copyAuctionCaseNo(caseNo) {
+  const text = String(caseNo || "").trim();
+  if (!text) throw new Error("事件番号がありません");
+
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Clipboard APIが拒否された場合は従来方式へフォールバックする。
+    }
+  }
+
+  if (typeof document === "undefined" || !document.body) {
+    throw new Error("クリップボードを利用できません");
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    if (!document.execCommand("copy")) throw new Error("コピーに失敗しました");
+  } finally {
+    textarea.remove();
+  }
+}
+
 async function accessToken() {
   if (!authEnabled) return null;
   const { data } = await supabase.auth.getSession();
@@ -195,11 +226,6 @@ function AdminImportSection() {
       setFormMessage({ ok: false, text: "事件番号が未入力です。事件番号を入力してください" });
       return;
     }
-    if (!form.bit_url.trim()) {
-      setFormMessage({ ok: false, text: "BITの物件URLが未入力です。公式URLを入力してください" });
-      return;
-    }
-
     const csv = auctionFormCsv(form);
     console.info("[auction-import] フォーム送信ペイロード", {
       id: auctionImportId(form),
@@ -260,7 +286,9 @@ function AdminImportSection() {
       <h2 style={h2St}>管理者: 物件データ登録</h2>
       <div style={{ fontSize: 12, color: T.warnInk, background: T.warnBg,
         borderRadius: 8, padding: "8px 10px", lineHeight: 1.7, marginBottom: 14 }}>
-        BITの公表情報を確認のうえ転記してください。3点セットPDFの保存・転載は行わず、リンクのみ登録します。
+        BITの公表情報を確認のうえ転記してください。3点セットPDFの保存・転載は行いません。
+        <br />
+        BITは物件ごとの固定URLを持たないため、URL欄は通常空欄で構いません。
       </div>
 
       <AuctionPasteImport request={adminFetch} onImported={refresh} />
@@ -329,8 +357,8 @@ function AdminImportSection() {
             <option value="false">なし</option>
           </select>
         </label>
-        {field("BITの物件URL*", "bit_url",
-          { type: "url", required: true, placeholder: "https://www.bit.courts.go.jp/..." })}
+        {field("BITの物件URL（任意・BITは物件ごとの固定URLが無いため通常は空欄）", "bit_url",
+          { type: "url", placeholder: "通常は空欄" })}
         <label style={{ ...labelSt, gridColumn: "1 / -1" }}>占有状況（任意・80字以内）
           <textarea value={form.occupancy} onChange={setField("occupancy")} maxLength={80}
             style={{ ...inputSt, marginTop: 3, minHeight: 58, resize: "vertical" }} />
@@ -427,10 +455,35 @@ function Checklist({ occupancy, embedded = false }) {
 
 function AuctionCard({ item, followed, onBid, onToggleFollow }) {
   const location = [item.pref, item.city].filter(Boolean).join("");
+  const caseNo = String(item.case_no || "").trim();
+  const [bitMessage, setBitMessage] = useState("");
   const appraisalRatio = Number(item.appraisal_value) > 0 && Number(item.min_price) > 0
     && Number.isFinite(Number(item.min_price))
     ? Math.round((Number(item.min_price) / Number(item.appraisal_value)) * 1000) / 10
     : null;
+
+  useEffect(() => {
+    if (!bitMessage) return undefined;
+    const timeout = window.setTimeout(() => setBitMessage(""), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [bitMessage]);
+
+  const copyCaseNo = async (searchAfterCopy = false) => {
+    if (!caseNo) return;
+    const copyTask = copyAuctionCaseNo(caseNo);
+    if (searchAfterCopy) {
+      window.open("https://www.bit.courts.go.jp/", "_blank", "noopener");
+    }
+    try {
+      await copyTask;
+      setBitMessage(searchAfterCopy
+        ? "事件番号をコピーしました。BITの検索画面で貼り付けてください"
+        : "事件番号をコピーしました");
+    } catch {
+      setBitMessage("事件番号をコピーできませんでした。手動でコピーしてください");
+    }
+  };
+
   return (
     <article style={{ border: `1px solid ${T.line}`, borderRadius: 12,
       padding: 14, background: "#FFF", boxShadow: "0 6px 18px rgba(31,58,82,.05)" }}>
@@ -452,9 +505,18 @@ function AuctionCard({ item, followed, onBid, onToggleFollow }) {
               </span>
             )}
           </div>
-          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4 }}>
-            {[item.court, item.case_no,
-              item.item_no != null ? "物件番号" + item.item_no : ""].filter(Boolean).join(" ／ ")}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap",
+            fontSize: 11.5, color: T.sub, marginTop: 4 }}>
+            <span>
+              {[item.court, "事件番号: " + (caseNo || "未登録"),
+                item.item_no != null ? "物件番号" + item.item_no : ""].filter(Boolean).join(" ／ ")}
+            </span>
+            <button type="button" onClick={() => copyCaseNo(false)} disabled={!caseNo}
+              aria-label="事件番号をコピー" title="事件番号をコピー"
+              style={{ border: 0, background: "transparent", padding: "1px 3px",
+                cursor: caseNo ? "pointer" : "default", opacity: caseNo ? 1 : 0.4 }}>
+              📋
+            </button>
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -504,12 +566,25 @@ function AuctionCard({ item, followed, onBid, onToggleFollow }) {
           style={{ ...btnSt(followed ? T.sub : T.teal) }}>
           {followed ? "フォロー解除" : "フォロー"}
         </button>
-        <a href={item.bit_url} target="_blank" rel="noreferrer"
-          style={{ fontSize: 12.5, color: T.blue, textDecoration: "underline",
-            marginLeft: "auto" }}>
-          BITで3点セットを見る↗
-        </a>
+        <button type="button" onClick={() => copyCaseNo(true)} disabled={!caseNo}
+          style={{ ...btnSt(T.navy), opacity: caseNo ? 1 : 0.45 }}>
+          BITで検索(事件番号をコピー)
+        </button>
+        {item.bit_url && (
+          <a href={item.bit_url} target="_blank" rel="noreferrer"
+            style={{ fontSize: 11.5, color: T.blue, textDecoration: "underline",
+              marginLeft: "auto" }}>
+            登録リンクを開く↗
+          </a>
+        )}
       </div>
+      {bitMessage && (
+        <div role="status" aria-live="polite"
+          style={{ marginTop: 8, padding: "7px 9px", borderRadius: 7,
+            fontSize: 11.5, color: T.good, background: "rgba(35,139,91,.08)" }}>
+          {bitMessage}
+        </div>
+      )}
     </article>
   );
 }
@@ -645,4 +720,3 @@ export default function AuctionTab({
     </div>
   );
 }
-

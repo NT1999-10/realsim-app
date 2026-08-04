@@ -18,7 +18,7 @@ create table if not exists public.auction_items (
   built_year int,
   floor_area numeric,
   land_area numeric,
-  bit_url text not null,
+  bit_url text,
   active boolean not null default true,
   first_seen timestamptz not null default now(),
   updated_at timestamptz not null default now()

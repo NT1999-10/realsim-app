@@ -13,7 +13,7 @@ const CSV_COLUMNS = [
   "city_planning_tax_yen", "zoning", "building_coverage", "floor_area_ratio",
   "occupancy", "price_reduced", "notes",
 ];
-const REQUIRED_COLUMNS = ["case_no", "bit_url"];
+const REQUIRED_COLUMNS = ["case_no"];
 const VALID_TYPES = new Set(["マンション", "戸建て", "土地", "その他"]);
 
 function serviceHeaders() {
@@ -136,6 +136,7 @@ function booleanValue(value, fallback = true, field = "active") {
 
 function officialBitUrl(value) {
   const text = String(value || "").trim();
+  if (!text) return null;
   let url;
   try {
     url = new URL(text);
@@ -165,7 +166,6 @@ export function mapAuctionRow(headers, values, lineNumber) {
     const bitUrl = nullableText(raw.bit_url);
     if (!caseNo) throw new Error("事件番号(case_no)は必須です");
     if (itemNo < 1) throw new Error("物件番号(item_no)は1以上で入力してください");
-    if (!bitUrl) throw new Error("BITの物件URL(bit_url)は必須です");
 
     const type = nullableText(raw.type) || "その他";
     if (!VALID_TYPES.has(type)) {

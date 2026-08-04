@@ -9,6 +9,9 @@ const CSV_COLUMNS = [
   "id", "court", "case_no", "item_no", "pref", "city", "address", "type",
   "min_price", "deposit", "bid_start", "bid_end", "open_date", "built_year",
   "floor_area", "land_area", "bit_url", "active",
+  "buyable_price", "appraisal_value", "property_tax_yen",
+  "city_planning_tax_yen", "zoning", "building_coverage", "floor_area_ratio",
+  "occupancy", "price_reduced", "notes",
 ];
 const REQUIRED_COLUMNS = ["case_no", "bit_url"];
 const VALID_TYPES = new Set(["マンション", "戸建て", "土地", "その他"]);
@@ -123,12 +126,12 @@ function nullableDate(value) {
   return text;
 }
 
-function booleanValue(value) {
+function booleanValue(value, fallback = true, field = "active") {
   const text = String(value == null ? "" : value).trim().toLowerCase();
-  if (!text) return true;
+  if (!text) return fallback;
   if (["true", "1", "yes"].includes(text)) return true;
   if (["false", "0", "no"].includes(text)) return false;
-  throw new Error("activeはtrueまたはfalseで入力してください");
+  throw new Error(field + "はtrueまたはfalseで入力してください");
 }
 
 function officialBitUrl(value) {
@@ -168,6 +171,21 @@ export function mapAuctionRow(headers, values, lineNumber) {
     if (!VALID_TYPES.has(type)) {
       throw new Error("typeはマンション/戸建て/土地/その他のいずれかです");
     }
+    const detail = {};
+    const includeDetail = (name, value) => {
+      if (headers.includes(name)) detail[name] = value;
+    };
+    includeDetail("buyable_price", nullableNumber(raw.buyable_price, true));
+    includeDetail("appraisal_value", nullableNumber(raw.appraisal_value, true));
+    includeDetail("property_tax_yen", nullableNumber(raw.property_tax_yen, true));
+    includeDetail("city_planning_tax_yen", nullableNumber(raw.city_planning_tax_yen, true));
+    includeDetail("zoning", nullableText(raw.zoning));
+    includeDetail("building_coverage", nullableNumber(raw.building_coverage));
+    includeDetail("floor_area_ratio", nullableNumber(raw.floor_area_ratio));
+    includeDetail("occupancy", nullableText(raw.occupancy));
+    includeDetail("price_reduced",
+      booleanValue(raw.price_reduced, false, "price_reduced"));
+    includeDetail("notes", nullableText(raw.notes));
     return {
       id: String(raw.id || "").trim() || generatedAuctionId(court, caseNo, itemNo),
       court,
@@ -187,6 +205,7 @@ export function mapAuctionRow(headers, values, lineNumber) {
       land_area: nullableNumber(raw.land_area),
       bit_url: officialBitUrl(bitUrl),
       active: booleanValue(raw.active),
+      ...detail,
       updated_at: new Date().toISOString(),
     };
   } catch (error) {

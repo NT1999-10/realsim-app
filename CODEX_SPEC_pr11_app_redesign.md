@@ -1,267 +1,378 @@
-# 指示書: アプリ本体のデザインをYOMUの新LPに統一する (PR#11)
+# 指示書: アプリのデザインをYOMUの新LPに統一する (PR#11)
 
-対象リポジトリ: `realsim-app`。新規ブランチ `agent/pr11-design-system` を切って作業すること。
+対象: `realsim-app`。ブランチ `agent/pr11-design-system` を新規に切って作業する。
 
-## 0. 前提と目的
+## 0. 目的と前提
 
-`realsim-lp` 側のLPデザインを刷新した。アプリ本体（React + Vite）の見た目が旧デザインのままで、**LPからサインアップして入った瞬間に別サービスに見える**状態になっている。アプリ側をLPのデザイン言語に合わせるのがこのタスクのゴール。
+`realsim-lp` 側のLPデザインを刷新した。アプリの見た目が旧デザイン（青緑グラデーション）のままで、LPからサインアップして入った瞬間に別サービスに見える。**アプリをLPのデザイン言語に合わせる**のがゴール。
 
-**この指示書は単体で完結している。** 必要なデザイントークン・コンポーネント仕様・アイコンのSVGソースはすべて本書に記載してあるので、他リポジトリ（`realsim-lp`）を参照する必要はない。本書に書かれていない色・寸法・パターンを独自に発明しないこと。
+リポジトリ直下の `CODEX_REF_yomu_lp.html` が目指す完成形の実装例。**本書の値が最優先**で、本書に書かれていない細部はこのHTMLの実装をコピーする。どちらにも無いパターンを独自に発明しないこと。
 
-### やらないこと（スコープ外）
+### 現状の把握（調査済み・前提として扱ってよい）
 
-- **計算エンジン（35年月次シミュレーション）のロジックには一切触れない。** 数値・関数・テストの期待値を変更する変更は却下する
-- Supabase のスキーマ、RLS、認証フロー、Stripe連携の変更
+- スタイリングは**すべてインラインstyle**。CSSファイル・CSS Modules・Tailwindは一切使っていない
+- デザイントークンは `src/theme.js` の `T` オブジェクト1つだけ
+- 共通UIは `src/ui.jsx` の7つのexport（`Field` `Select` `Kpi` `cardSt` `h2St` `btnSt` `LockCard`）
+- 画面本体は `src/App.jsx`（3138行）に集約。タブは ホーム / シミュレーション / 物件比較 / 分析 / 運用管理 / 競売
+- グラフは recharts、色は `T` から供給されている
+- 詳細モードのパラメータは `<Section no="01" title="...">` 〜 `09` で**既にカテゴリ分けされている**
+
+### やらないこと（スコープ外・違反したPRは却下）
+
+- **計算エンジン（`src/engine.js`）には一切触れない。** 数値・関数・引数を変更しない
+- **`src/App.jsx` の分割リファクタリングをしない。** 3138行のままでよい。ファイル分割は差分がレビュー不能になるので禁止
+- **CSSファイル・CSS変数（`:root{--x}`）・CSSフレームワークを導入しない。** 既存のインラインstyle + `T` の方式を維持する
+- Supabaseスキーマ、RLS、認証、Stripe連携、API（`api/*.js`）の変更
 - 機能の追加・削除・画面の統廃合。**今回は見た目だけ**
-- ライブラリの新規導入（Tailwind、MUI、shadcn等への移行は不可。既存のスタイリング方式のまま置き換える）
+- 新規npmパッケージの追加（アイコンライブラリを含む）
 
 ---
 
-## 1. デザイントークンを単一の定義に集約する
+## 1. `src/theme.js` の `T` を差し替える
 
-まず `src/theme/` 配下（既存のtheme/ui分離を利用する。無ければ `src/styles/tokens.css` を新設）に、以下を**唯一の正**として定義する。以後、コンポーネント内のハードコードされた色・角丸・影はすべてこのトークン参照に置き換えること。
+**ファイルまるごと以下に置き換える。** キー名は既存を維持し（62箇所以上から参照されているため）、値だけを入れ替える。末尾に新規キーを追加する。
 
-```css
-:root{
-  /* 藍 — ブランドの主色。数値・見出し・主要CTA */
-  --ink:#1E3E6B; --ink-2:#2f5488; --ink-3:#4a74ab; --ink-deep:#12233f; --ink-night:#0B1526;
-  /* 山吹 — ラベル・アクセント。CTAの副系統 */
-  --gold:#B8821F; --gold-2:#DBA53F; --gold-soft:#FBF3E2;
-  /* 朱 — 危険・警告・注目。使用箇所を絞る（後述 §4） */
-  --red:#C0392B; --red-2:#E05A46; --red-soft:#FDECEA;
-  /* 緑 — 良好・達成 */
-  --ok:#12795A; --ok-soft:#E6F4EF;
-  /* 面 */
-  --paper:#F7F7F4; --surface:#ffffff; --surface-2:#FBFBF9;
-  /* 文字 */
-  --text:#14202F; --muted:#41526A; --faint:#6B7B91;
-  /* 罫線 */
-  --line:#E4E4DE; --line-2:#D2D6DC;
-  /* 書体 */
-  --serif:"Noto Serif JP",serif;
-  --sans:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
-  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
-  /* 角丸 */
-  --r:16px; --r-s:10px; --r-xs:8px; --pill:999px;
-  /* 影（3段階だけ。これ以外の影を新規に作らない） */
-  --sh1:0 1px 2px rgba(18,35,63,.05), 0 6px 18px -10px rgba(18,35,63,.22);
-  --sh2:0 2px 4px rgba(18,35,63,.05), 0 18px 40px -20px rgba(18,35,63,.35);
-  --sh3:0 30px 70px -30px rgba(18,35,63,.45);
-}
+```js
+// ---------- design tokens (YOMU) ----------
+export const T = {
+  bg: "transparent",
+
+  // 面
+  card: "#FFFFFF", surface2: "#FBFBF9", paper: "#F7F7F4",
+
+  // 文字
+  ink: "#14202F", sub: "#41526A", faint: "#6B7B91",
+
+  // 罫線
+  line: "#E4E4DE", line2: "#D2D6DC",
+
+  // 藍（ブランド主色）
+  navy: "#12233F", blue: "#1E3E6B", blue2: "#2F5488", teal: "#4A74AB",
+  grad: "linear-gradient(180deg,#2a548c 0%,#1E3E6B 100%)",
+
+  // シナリオ2色（グラフとKPIの対比に使う）
+  scenario: "#1E3E6B",              // 現実シナリオ = 藍・実線
+  scenarioSoft: "rgba(30,62,107,.20)",
+  opt: "#DBA53F",                   // 楽観シナリオ = 山吹・破線
+  optSoft: "rgba(219,165,63,.16)",
+
+  // 危険・警告・良好
+  real: "#C0392B",                  // 危険（キー名は互換のため据え置き。§2参照）
+  realSoft: "rgba(192,57,43,.09)",
+  danger: "#C0392B", dangerSoft: "rgba(192,57,43,.09)",
+  warnBg: "#FDF5E3", warnInk: "#8A5A12", warnLine: "#EBD5A4",
+  good: "#12795A", goodSoft: "#E6F4EF", goodLine: "#B6E0D0",
+
+  // 山吹（ラベル・アクセント）
+  gold: "#B8821F", gold2: "#DBA53F", goldSoft: "#FBF3E2",
+  gradGold: "linear-gradient(180deg,#D09A2E 0%,#B8821F 100%)",
+
+  // AI関連（青緑をやめて山吹系へ）
+  aiBg: "rgba(184,130,31,.08)", aiInk: "#93671A", aiLine: "rgba(184,130,31,.35)",
+
+  // 書体
+  serif: '"Noto Serif JP",serif',
+  sans: '"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif',
+  mono: '"JetBrains Mono",ui-monospace,Menlo,monospace',
+
+  // 角丸
+  r: 16, rS: 10, rXs: 8, pill: 999,
+
+  // 影（この3つ以外の影を新規に作らない）
+  sh1: "0 1px 2px rgba(18,35,63,.05), 0 6px 18px -10px rgba(18,35,63,.22)",
+  sh2: "0 2px 4px rgba(18,35,63,.05), 0 18px 40px -20px rgba(18,35,63,.35)",
+  sh3: "0 30px 70px -30px rgba(18,35,63,.45)",
+};
 ```
 
-フォントは `index.html` の `<head>` で Google Fonts を1リクエストにまとめて読み込む:
+---
+
+## 2. `T.real` の意味を分離する（最重要・慎重に）
+
+現在 `T.real`（#D14B32）は**2つの異なる意味**で使われている。`src/App.jsx` だけで62箇所ある。
+
+| 意味 | 現状 | 変更後 |
+|---|---|---|
+| **A. 危険・マイナス値**（DSCR1.2未満、CF赤字、⛔行、支出、残り年数わずか） | `T.real` | `T.danger`（朱 #C0392B） |
+| **B. 現実シナリオの系列色**（楽観と対比するグラフの線・エリア） | `T.real` | `T.scenario`（藍 #1E3E6B） |
+
+**大半はAである。Bは以下の箇所だけ**（行番号は現時点のもの。前後の文脈で判定すること）:
+
+- `src/App.jsx` L946 付近 — レポート内 `<Line dataKey="現実" stroke={T.real}>` → `T.scenario`
+- `src/App.jsx` L2913 付近 — メイングラフ `<Line dataKey="現実累積" stroke={T.real}>` → `T.scenario`
+- `src/App.jsx` L2909 付近 — `<Area dataKey="楽観累積" fill={T.realSoft}>` は塗り対象が楽観側なので → `fill={T.optSoft}`
+- `src/App.jsx` L552 付近 — 予実管理 `<Line dataKey="実績累積" stroke={T.real}>` → `T.scenario`
+- `src/App.jsx` L360-361 付近 — 感度分析の「現状」基準線 → `T.scenario`
+
+**判定ルール**: その色が「悪い状態を警告している」ならA（朱）、「2つのシナリオのうち現実側を指している」ならB（藍）。迷ったらAにする。
+
+あわせてシナリオ対比のスタイルをLPに揃える:
+
+- 現実 = `T.scenario`、実線、`strokeWidth={2.8}`
+- 楽観 = `T.opt`、破線 `strokeDasharray="5 4"`、`strokeWidth={2.4}`
+- 単年CFのBarの `Cell` は `d["単年CF"] < 0 ? T.danger : T.scenario`
+
+**なぜこう変えるか**: 現状は「現実シナリオ」が朱で描かれているため、正常な物件でも現実の線が警告色に見える。LPでは現実=藍・楽観=山吹・危険=朱と役割が分かれている。朱は危険専用に解放する。
+
+**`T.real` というキー名は残す**（62箇所の一括置換ミスを避けるため）。値が朱のまま変わらないので、Aの用途はコード変更なしで正しく動く。Bの5箇所だけを `T.scenario` に書き換える。
+
+---
+
+## 3. `index.html` を差し替える
+
+フォント読み込みと `body` の背景を変更する。`<title>` も直す。
 
 ```html
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 ```
 
-**書体の使い分けは厳格に守ること。**
+- 現在の `Shippori Mincho` を `Noto Serif JP` に置き換える（LPと揃えるため）
+- `JetBrains Mono` を**新規追加**する（現在は読み込まれておらず、数値がmonoになっていない）
+- `<title>` を `YOMU — 不動産収支シミュレーター` に変更する
 
-| 用途 | 書体 | 備考 |
-|---|---|---|
-| ページ見出し・セクション見出し | Noto Serif JP 700 | 和の表情はここだけで出す |
-| 本文・ラベル・ボタン・カード見出し | Zen Kaku Gothic New 500 / 700 | 既定の `font-weight` は **500**。400は使わない |
-| **すべての数値・単位・英字ラベル** | JetBrains Mono + `font-variant-numeric: tabular-nums` | 金額・利回り・DSCR・年月・IRR。桁が揃うことが信頼感の源 |
-
-`body` の既定は `font-size:16px; font-weight:500; line-height:1.78; color:var(--text); background:var(--paper);`
-
----
-
-## 2. コンポーネントの作り替え
-
-旧デザインの「1px罫線で全部を仕切る帳簿レイアウト」をやめる。**面を分けるのは罫線ではなくカードと余白**に統一する。
-
-### 2.1 カード（最重要）
-
-```
-background: var(--surface);
-border: 1px solid var(--line);
-border-radius: var(--r);      /* 16px */
-box-shadow: var(--sh1);
-padding: 22px;
-```
-
-- グリッドは `display:grid; gap:14px`。**隣接セルで罫線を共有しない**（旧: `border-right:1px` の連鎖 → 廃止）
-- クリック可能なカードのみ `:hover { transform: translateY(-4px); box-shadow: var(--sh2); }`、遷移は `.22s cubic-bezier(.2,.8,.3,1)`
-- 静的な表示カードにホバー効果を付けない（触れるものと触れないものを見た目で区別する）
-
-### 2.2 ボタン
-
-| 種別 | 指定 |
-|---|---|
-| Primary | `background: linear-gradient(180deg,#2a548c,#1E3E6B); color:#fff; box-shadow:var(--sh1)` |
-| Gold（課金・変換系） | `background: linear-gradient(180deg,#D09A2E,#B8821F); color:#fff` |
-| Outline | `background:var(--surface); border:1px solid var(--line-2); color:var(--ink)` |
-| Danger | `background:var(--red); color:#fff` — 削除・解約など不可逆な操作のみ |
-
-共通: `border-radius:var(--r-s); padding:11px 20px; font-weight:700; font-size:14.5px`。ホバーで `translateY(-2px)` + `--sh2`。**フラットな1px枠のボタンは全廃**。
-
-### 2.3 入力フォーム
-
-物件パラメータの入力欄は、数値入力であることが一目で分かる作りにする。
-
-```
-外枠: background:var(--surface); border:1.5px solid var(--line-2); border-radius:var(--r-s); padding:0 14px
-入力: font-family:var(--mono); font-size:19px; font-weight:700; text-align:right; border:0; outline:0
-単位: 入力欄の内側右端に "万円" "円" "%" をグレーで固定表示（プレースホルダではなく常時表示）
-フォーカス: border-color:var(--ink-3); box-shadow:0 0 0 4px rgba(74,116,171,.14)
-ラベル: 左に日本語ラベル（700）、右にモノスペースの英字キー（PRICE / RENT / EQUITY 等）
-```
-
-30以上のパラメータを持つ詳細モードでは、**関連するパラメータをカードで束ね、カード単位に見出しとアイコンを付ける**（例: 「借入条件」「稼働と退去」「維持と設備」「税と売却」）。1画面にフラットな入力欄が並ぶ現状をやめる。
-
-### 2.4 テーブル（物件比較・35年収支表）
-
-- 外側を `.card` で包み `overflow:hidden`、テーブル自体の外枠線は消す
-- `thead` は塗り（`var(--ink-deep)`、文字 `#fff`、`font-size:12.5px`）。行の罫線は `1px solid var(--line)` のみ、縦罫線は引かない
-- 行ホバー `background:#FAFBFD`
-- **数値セルは必ず mono + `tabular-nums` + 右寄せ**
-- 良し悪しのある列は、テキストに色を付けるのではなく **アイコンバッジ**で示す（✓ = 緑丸、✕ = 朱丸、19px、`border-radius:50%`、白抜きアイコン）
-
-### 2.5 信号機診断コンポーネント
-
-LPの `.signal` をそのまま移植する。判定に応じて**カードの背景ごと**変える:
-
-| 判定 | 背景 | 枠線 | ランプ |
-|---|---|---|---|
-| 青 | `var(--ok-soft)` | `#B6E0D0` | `var(--ok)` + `box-shadow:0 0 0 4px rgba(18,121,90,.18)` |
-| 黄 | `#FDF5E3` | `#EBD5A4` | `#DFA82C` |
-| 赤 | `var(--red-soft)` | `#F3C3BC` | `var(--red)` |
-
-判定タイトルは17px/700、理由文は13.5px/500。ランプは14px円を縦3つ、非点灯は `rgba(20,32,47,.13)`。
-
-### 2.6 グラフ
-
-Rechartsなど既存のライブラリはそのまま使ってよいが、色とスタイルを揃える。
-
-- 実線（YOMUの現実前提）= `var(--ink)`、太さ2.8、`stroke-linecap:round`
-- 破線（楽観・業者提案）= `var(--gold-2)`、太さ2.4、`stroke-dasharray:"5 4"`
-- 面グラデーション = `var(--ink)` を opacity .20 → 0
-- グリッド線 `#EDEDE7`、基準線 `#D2D6DC`、軸ラベルは mono 9〜10px `var(--faint)`
-- 危険域・赤字域を示すときだけ `var(--red)`
-- **凡例は上に載せず、線の終点近くに直接ラベルを置く**（LPのヒーローグラフを参照）
-
----
-
-## 3. アイコンとイラスト
-
-**付録A** のSVGスプライトを `src/assets/yomu-sprite.svg` として新規作成し、その中身をアプリのルートに1度だけマウントするコンポーネント（`src/components/IconSprite.tsx` 等）を作る。各所からは `<svg class="ico"><use href="#i-yield"/></svg>` で参照する。**アイコンを画像ファイルやアイコンライブラリ（lucide、heroicons等）で別途調達しない。**
+`<style>` ブロックの `body` 背景を、青緑のradial-gradient + ドットグリッドから、LPの方眼紙に置き換える:
 
 ```css
-.ico{ width:22px; height:22px; stroke:currentColor; fill:none;
-      stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
-.ico-box{ width:46px; height:46px; border-radius:13px; display:flex;
-          align-items:center; justify-content:center; flex:0 0 auto;
-          background:linear-gradient(150deg,#EAF0F9,#DCE6F4); color:var(--ink);
-          box-shadow:inset 0 1px 0 #fff; }
-.ico-box.gold{ background:linear-gradient(150deg,#FBF1DC,#F4E3BF); color:#93671A; }
-.ico-box.red { background:linear-gradient(150deg,#FDECEA,#FAD9D4); color:var(--red); }
-```
-
-収録シンボル: `i-yield` `i-occupancy` `i-mortgage` `i-upkeep` `i-compare` `i-ai` `i-signal` `i-stress` `i-metrics` `i-manage` `i-auction` `i-pdf` `i-sync` `i-doc` `i-arrow` `i-plus` `i-check` `i-x` `i-alert` `i-shield` `i-users` / イラスト `il-woman` `il-rookie`
-
-**アイコンの割り当ては意味で固定する**（LPと同じ対応表を守ること）:
-
-| 概念 | シンボル | タイル色 |
-|---|---|---|
-| 利回り・収益 | `i-yield` | 標準（藍） |
-| 稼働・空室・物件 | `i-occupancy` | 標準 |
-| 返済・借入・金融機関 | `i-mortgage` | **red** |
-| 維持・設備・修繕 | `i-upkeep` | **gold** |
-| AI市場調査 | `i-ai` | gold |
-| 信号機診断 | `i-signal` | red |
-| 感度分析・ストレス | `i-stress` | 標準 |
-| 指標・比較 | `i-metrics` | 標準 |
-| 運用管理・カレンダー | `i-manage` | 標準 |
-| 競売 | `i-auction` | gold |
-| PDF出力 | `i-pdf` | 標準 |
-| 警告 | `i-alert` | red |
-
-**人物イラストの使いどころ**（濫用しないこと。1画面に1体まで）:
-
-- 初回オンボーディング / チュートリアルの各ステップ — `il-woman` を吹き出しと組み合わせる
-- 空状態（物件0件、調査履歴なし、比較対象なし）— `il-rookie` + 次の行動を促す1文 + CTAボタン。**「データがありません」だけの空画面を全廃する**
-- 診断結果の解説パネル — `il-woman` の丸アイコン（80px）+ 吹き出しで、判定理由を一言で述べる
-
-吹き出しのスタイル:
-```
-background:linear-gradient(120deg,#FEF5F3,#fff 60%); border:1px solid #F3CFC9;
-border-radius:14px; padding:13px 17px; box-shadow:var(--sh1);
-/* 左向きの三角は ::before を 14px 正方形 45度回転で作る（LPの .bubble を参照） */
+body{
+  margin:0;
+  font-family:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  font-weight:500;
+  color:#14202F;
+  background:#F7F7F4;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:
+    linear-gradient(rgba(30,62,107,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,62,107,.05) 1px,transparent 1px);
+  background-size:44px 44px;
+  -webkit-mask-image:linear-gradient(180deg, rgba(0,0,0,.9), transparent 560px);
+  mask-image:linear-gradient(180deg, rgba(0,0,0,.9), transparent 560px);
+}
 ```
 
 ---
 
-## 4. 朱色（`--red`）の使用ルール
+## 4. `src/ui.jsx` の7つを書き換える
+
+**この7つを直せば、アプリの大半の見た目が変わる。** 以下をそのまま実装する。
+
+### 4.1 `cardSt` / `h2St` / `btnSt`
+
+```js
+export const cardSt = {
+  background: T.card, borderRadius: T.r, boxShadow: T.sh1,
+  padding: 22, border: `1px solid ${T.line}`, marginBottom: 14,
+};
+
+// 見出し: 青の下線3pxをやめ、明朝 + 細い罫線 + 山吹の短いバーへ
+export const h2St = {
+  fontSize: 17, fontWeight: 700, fontFamily: T.serif, color: T.navy,
+  margin: "0 0 16px", letterSpacing: "0.01em",
+  borderBottom: `1px solid ${T.line}`, paddingBottom: 10,
+  display: "flex", alignItems: "center", gap: 10,
+};
+
+export const btnSt = (bg) => ({
+  padding: "11px 20px",
+  background: bg === T.blue || bg === T.navy ? T.grad : bg === T.gold ? T.gradGold : bg,
+  color: "#FFF", border: "none", borderRadius: T.rS,
+  fontSize: 14.5, fontWeight: 700, cursor: "pointer",
+  boxShadow: T.sh1, transition: "transform .18s cubic-bezier(.2,.8,.3,1), box-shadow .18s",
+});
+```
+
+### 4.2 `Field` — 数値入力を主役にする
+
+- ラベル: `fontSize: 13.5, fontWeight: 700, color: T.ink`（現状は12px・`T.sub`で薄すぎる）
+- 入力: `fontFamily: T.mono, fontSize: 19, fontWeight: 700, textAlign: "right"`
+- 枠: `border: 1.5px solid ${T.line2}`, `borderRadius: T.rS`, 背景 `#FFF`
+- フォーカス時: `borderColor: T.teal` + `boxShadow: "0 0 0 4px rgba(74,116,171,.14)"`（`onFocus`/`onBlur` でstate管理）
+- 単位（`unit`）は入力欄の**内側右端**にグレーで固定表示する（現在は外側に置かれている）
+- `?` ヘルプボタン: `borderRadius: T.pill`, 色は `T.gold`。開いたときの解説パネルは `background: T.goldSoft, color: T.aiInk`
+- `hint` は `fontSize: 12, color: T.faint`
+
+### 4.3 `Select`
+
+`Field` と同じ枠・角丸・フォーカスリングに揃える。`fontSize: 15`、`fontFamily: T.sans`。
+
+### 4.4 `Kpi` — 画面で最も目立つ要素にする
+
+```js
+// 数値は必ず mono + tabular-nums
+{ fontFamily: T.mono, fontSize: 26, fontWeight: 700, fontVariantNumeric: "tabular-nums" }
+```
+
+- ラベル: `fontSize: 11.5, fontWeight: 700, color: T.faint, letterSpacing: ".04em"`、英字ラベルなら `fontFamily: T.mono`
+- カード: `borderRadius: T.rS`, `border: 1px solid ${T.line}`, `boxShadow: T.sh1`, `padding: "14px 16px"`
+- `color` propが渡されない場合の既定は `T.ink`
+
+### 4.5 `LockCard`
+
+`T.grad` のボタンはそのまま活かす。鍵の絵文字を `#i-shield` アイコン（§6）に差し替え、ラベルの背景を `rgba(255,255,255,.92)`、`borderRadius: T.rS` に。
+
+---
+
+## 5. `src/App.jsx` の直書きスタイル
+
+`App.jsx` には `ui.jsx` を経由しない直書きの `style={{...}}` が多数ある。以下を置換する。**構造・ロジック・JSXの入れ子は変えない。値だけ差し替える。**
+
+### 5.1 `Section`（L41付近）— パラメータ群の折りたたみカード
+
+分類（01 物件・取得コスト 〜 09 売却出口）は**既に正しいので変更しない**。見た目だけ:
+
+- カード: `borderRadius: T.r`, `boxShadow: T.sh1`, `padding: 22`, `border: 1px solid ${T.line}`
+- 見出し: `h2St` と同じ（明朝17px + 1px罫線）。`borderBottom: 3px solid ${T.blue}` をやめる
+- 番号（`no`）: `fontFamily: T.mono, fontSize: 11, letterSpacing: ".14em", color: T.gold`
+- 開閉の `+` / `−`: `#i-plus` アイコン（§6）に差し替え、開いているとき45度回転
+
+### 5.2 `DiagnosisCard`（L715付近）— LPの信号機に寄せる
+
+`conf` を以下に変更し、判定に応じてカード全体の背景・枠線を変える:
+
+```js
+const conf = {
+  ok:     { color: T.good,    bg: T.goodSoft, line: T.goodLine, label: "健全",  lamp: "g" },
+  warn:   { color: T.warnInk, bg: T.warnBg,   line: T.warnLine, label: "要注意", lamp: "y" },
+  danger: { color: T.danger,  bg: T.dangerSoft, line: "#F3C3BC", label: "危険", lamp: "r" },
+}[diag.level];
+```
+
+- 現在の12px単色ドットを、**縦3灯の信号機**に置き換える（14px円を縦に3つ、該当色のみ点灯し `boxShadow: 0 0 0 4px <色の20%>`、非点灯は `rgba(20,32,47,.13)`）
+- 見出し「診断: 健全」は `fontFamily: T.serif, fontSize: 19`
+- `⛔` `⚠` の絵文字は `#i-alert` アイコンに差し替える
+- `borderLeft: 5px solid` は残してよい（LPの吹き出しと同じ発想）
+
+### 5.3 タブナビ（L2679付近）
+
+- `borderRadius: 18` → `T.pill` のまま可。選択中の `background: T.grad` は新しい藍グラデになるので変更不要
+- `boxShadow: "0 6px 18px rgba(45,125,210,.28)"` → `"0 6px 18px rgba(30,62,107,.28)"`（青緑の名残）
+- 非選択タブに各タブのアイコンを追加する（ホーム=`i-metrics` / シミュレーション=`i-compare` / 物件比較=`i-metrics` / 分析=`i-stress` / 運用管理=`i-manage` / 競売=`i-auction`）
+- Pro限定の 🔒 絵文字は `#i-shield` に差し替える
+
+### 5.4 モード切替（L2714付近）・KPI行（L2875付近）・グラフ見出し
+
+- モード切替のセグメント: `borderRadius: T.rS`, 選択中は `T.grad`
+- KPI行: `gap: 8` → `10`
+- グラフの見出し（`fontSize: 13, color: T.navy` の直書き）は `h2St` に統一する
+- recharts の `CartesianGrid stroke` は `T.line`、`ReferenceLine y={0}` は `T.line2`、軸の `tick fill` は `T.faint`
+- ハードコードされた `"#E9EDF1"` `"#16222E"`（レポート内）も `T.line` / `T.ink` に置換する
+
+### 5.5 AI市場データのセクション（L2758付近）
+
+`T.aiBg` / `T.aiInk` の値が青緑から山吹に変わるので、**コードは変えなくてよい**。ただし枠線の直書き `"1px solid rgba(43,184,163,.35)"` を `T.aiLine` に置換すること。
+
+---
+
+## 6. アイコンの導入
+
+**付録A** のSVGを `src/assets/yomu-sprite.svg` として保存し、その中身をReactコンポーネント `src/icons.jsx` として実装する（既存のフラットな `src/` 構成に合わせる。`components/` ディレクトリは作らない）。
+
+```jsx
+// src/icons.jsx
+export function IconSprite() { return ( /* 付録AのSVGをそのままJSX化 */ ); }
+export function Icon({ name, size = 22, color = "currentColor", style }) {
+  return (
+    <svg width={size} height={size} style={{ stroke: color, fill: "none", strokeWidth: 1.7,
+      strokeLinecap: "round", strokeLinejoin: "round", flexShrink: 0, ...style }}>
+      <use href={`#i-${name}`} />
+    </svg>
+  );
+}
+export function IconTile({ name, tone = "ink" }) { /* 46px・角丸13px・グラデ背景のタイル */ }
+```
+
+`<IconSprite />` は `src/main.jsx` または `App` の最上位で**1度だけ**マウントする。
+
+JSXへの変換時の注意: `class` → `className`、`stroke-width` → `strokeWidth`、`stroke-dasharray` → `strokeDasharray`、`stroke-linecap` → `strokeLinecap`、`stroke-linejoin` → `strokeLinejoin`、`fill-rule` → `fillRule`。**パスのd属性と数値は1文字も変更しないこと。**
+
+`IconTile` のトーン: `ink`（`linear-gradient(150deg,#EAF0F9,#DCE6F4)` / 文字色 `T.blue`）、`gold`（`linear-gradient(150deg,#FBF1DC,#F4E3BF)` / `#93671A`）、`red`（`linear-gradient(150deg,#FDECEA,#FAD9D4)` / `T.danger`）。
+
+### アイコンの割り当て（意味で固定する）
+
+| 概念 | シンボル |
+|---|---|
+| 利回り・収益・純資産 | `i-yield` |
+| 物件・稼働・空室・ポートフォリオ | `i-occupancy` |
+| 融資・返済・金融機関 | `i-mortgage` |
+| 維持・設備・修繕 | `i-upkeep` |
+| シナリオ比較・累積CF | `i-compare` |
+| AI市場調査 | `i-ai` |
+| 信号機診断 | `i-signal` |
+| 感度分析・ストレステスト | `i-stress` |
+| 指標・物件比較・レポート図表 | `i-metrics` |
+| 運用管理・カレンダー・予実 | `i-manage` |
+| 競売・指値 | `i-auction` |
+| PDF出力・申告CSV | `i-pdf` |
+| 警告・⛔・⚠ | `i-alert` |
+| Pro限定・セキュリティ | `i-shield` |
+| 同期・繰上返済 | `i-sync` |
+
+### 人物イラストの使いどころ
+
+`il-woman`（スーツの女性）と `il-rookie`（初心者）を**1画面に1体まで**で使う。
+
+- **空状態**: 物件0件、検討候補トレイが空、保存済みリサーチが無い、競売物件が0件 — `il-rookie` + 次の行動を促す1文 + CTAボタン。**「まだありません」だけの画面を全廃する**
+- **診断結果**: `DiagnosisCard` の脇に `il-woman` の丸アイコン（72px、`overflow:hidden` の円に下端を合わせて配置）+ 吹き出しで `diag.summary` の1文目を出す
+- **かんたんモードの導入文**: `il-woman` を添える
+
+吹き出し: `background: "linear-gradient(120deg,#FEF5F3,#fff 60%)"`, `border: "1px solid #F3CFC9"`, `borderRadius: 14`, `padding: "13px 17px"`, `boxShadow: T.sh1`。左向きの三角は14px正方形を45度回転した `::before` 相当の要素で作る（インラインstyleでは疑似要素が使えないため、`transform: "rotate(45deg)"` を当てた `<span>` を絶対配置する）。
+
+---
+
+## 7. 朱色（`T.danger`）の使用ルール
 
 朱は**注目を集めるための予算**として扱う。使いすぎると効かなくなる。
 
-**使ってよい:**
-- 赤信号判定、DSCR 1.0未満、月次CFがマイナスの数値
-- 予測と実績の乖離、ストレステストで赤字転落する条件
-- 削除・解約など不可逆な操作のボタン
-- 画面内で最も注目させたい数値、1画面につき**最大2〜3箇所**
+**使ってよい**: 赤信号判定、DSCR 1.2未満、CFマイナス、楽観とのギャップ、⛔行、支出、削除・解約ボタン、設備の残り年数わずか。
 
-**使ってはいけない:**
-- 通常のリンク、通常のラベル、装飾目的の下線や枠
-- 複数の数値に一律で適用すること（どれが本当に危険なのか分からなくなる）
+**使ってはいけない**: 通常のリンク、通常のラベル、装飾目的の枠線、現実シナリオの系列色（§2）。
 
-良好な状態は `--ok`、中立は `--ink`、補助ラベルは `--gold`。
+良好は `T.good`、中立は `T.ink`、補助ラベルは `T.gold`。**1画面に朱が3箇所を超えたら設計を見直すこと。**
 
 ---
 
-## 5. レイアウトと余白
+## 8. PR分割
 
-- コンテンツ最大幅 1180px、左右パディング 24px（モバイル 18px）
-- セクション間の縦余白 58px（モバイル 44px）、カード間 14px
-- **1画面あたりの情報密度を上げる。** 余白を空けるより、意味のある数値・ラベルを置く
-- サイドバー/ヘッダーは `background:rgba(247,247,244,.86); backdrop-filter:saturate(180%) blur(14px); border-bottom:1px solid rgba(0,0,0,.06)`
-- 画面の主要な数値（月次CF、DSCR、IRR、実質利回り）は、LPの `.kv` に相当する**KPIタイル**として画面上部に常に見える形で置く
-
----
-
-## 6. 作業の進め方（PR分割）
-
-1つの巨大PRにしない。以下の順で分割し、各PRごとにスクリーンショットを添えること。
+1つの巨大PRにしない。以下の順で分割し、各PRにスクリーンショットを添える。
 
 | PR | 内容 | 完了の目安 |
 |---|---|---|
-| PR-A | トークン定義＋フォント読み込み＋付録Aのスプライト設置とマウント。既存画面は触らない | 既存画面が壊れていないこと |
-| PR-B | 共通UI（Button / Card / Input / Table / Badge / Modal）をトークンベースに置換 | ハードコードされた色・角丸・影がUIコンポーネントから消えていること |
-| PR-C | ダッシュボードと物件詳細（KPIタイル、グラフ配色、信号機コンポーネント） | LPのヒーローと並べて同じ製品に見えること |
-| PR-D | 入力フォーム（かんたんモード / 詳細モード）のカード化・単位表示・mono数値 | 30以上のパラメータがカテゴリ別カードに束ねられていること |
-| PR-E | 空状態・オンボーディング・診断結果へのイラスト適用 | 「データがありません」だけの画面が0になっていること |
+| PR-A | §1 `theme.js` 差し替え / §3 `index.html` / §6 スプライトと `icons.jsx` 設置（まだ使わない） | ビルドが通り、既存画面の配色が藍・山吹に変わっている |
+| PR-B | §4 `ui.jsx` の7つを書き換え | 入力欄の数値がmonoの19pxになり、カードが角丸16pxになっている |
+| PR-C | §2 `T.real` の意味分離とグラフのシナリオ2色化 | 現実の線が藍、楽観が山吹の破線になっている |
+| PR-D | §5 `App.jsx` の直書きスタイル置換（`Section` / `DiagnosisCard` / タブ / KPI / レポート） | 青緑の名残（`rgba(45,125,210,*)` `rgba(43,184,163,*)` `#E9EDF1`）がgrepで出ない |
+| PR-E | §6 アイコンとイラストの適用、空状態の作り込み | 「まだありません」だけの画面が0になっている |
 
 ---
 
-## 7. 完了条件（このすべてを満たすこと）
+## 9. 完了条件
 
-- [ ] アプリ内に、トークンを経由しない色・角丸・影のハードコードが**残っていない**（`#[0-9a-fA-F]{6}` でgrepして、トークン定義ファイル以外にヒットしないこと。グラフのデータ色など不可避なものはコメントで理由を明記）
-- [ ] すべての金額・率・年数が mono + `tabular-nums` で表示され、桁が縦に揃っている
-- [ ] 本文の既定 `font-weight` が 500 になっており、薄すぎて読めない箇所がない
-- [ ] 見出しは Noto Serif JP、本文は Zen Kaku Gothic New で描画されている（フォント読み込み失敗時のフォールバックも確認）
-- [ ] 罫線だけで区切られたグリッドが残っていない（カード＋gapに置換済み）
-- [ ] 朱色の使用箇所が1画面あたり3箇所以内に収まっている
-- [ ] 空状態の画面すべてにイラストと次の行動のCTAがある
-- [ ] 幅 390px / 768px / 1440px で表示崩れと横スクロールが発生しない
-- [ ] 本文と背景のコントラスト比が 4.5:1 以上（`--faint` を本文に使わない。ラベル・注釈のみ）
-- [ ] 既存のユニットテストが全て通り、**計算結果の数値が変更前と1円も変わっていない**
-- [ ] LPとアプリのスクリーンショットを並べて添付し、同一プロダクトに見えることを目視確認
+- [ ] `src/engine.js` に差分が無い。計算結果が変更前と1円も変わらない
+- [ ] `src/App.jsx` が分割されていない（ファイル数が増えていない。`icons.jsx` を除く）
+- [ ] `npm run build` が通る
+- [ ] 旧配色の残骸が無い: `2D7DD2` `2BB8A3` `D14B32` `9DB6C8` `1F3A52` `E2E8EF` `E9EDF1` `16222E` `10202E` `5A6B7B` を全ファイルgrepして、`theme.js` 以外にヒットしない
+- [ ] すべての金額・率・年数が `fontFamily: T.mono` + `fontVariantNumeric: "tabular-nums"` で表示され、桁が縦に揃う
+- [ ] `fontSize` が 12px 未満の本文が残っていない（ラベル・注釈は12px以上、本文は13.5px以上）
+- [ ] 影は `T.sh1` / `T.sh2` / `T.sh3` のみ。`boxShadow` の直書きが無い
+- [ ] 現実シナリオの線が藍・実線、楽観が山吹・破線になっている
+- [ ] 1画面あたりの朱の使用が3箇所以内
+- [ ] 空状態の画面すべてにイラストとCTAがある
+- [ ] 幅 390px / 768px / 1440px で横スクロールが出ない
+- [ ] 全6タブ（ホーム/シミュレーション/物件比較/分析/運用管理/競売）とレポート出力画面のスクリーンショットを添付し、`CODEX_REF_yomu_lp.html` と並べて同一プロダクトに見えることを確認
 
-## 8. 判断に迷ったとき
+## 10. 判断に迷ったとき
 
-本書に指定がある場合は、**必ずその値をそのまま使う**。近い値に丸めたり、独自解釈で新しいパターンを作ったりしない。本書に存在しないパターンが必要になった場合は、実装を進める前に「何が足りないか」と「どうしたいか」を報告し、指示を待つこと。
+本書に値の指定があれば**そのまま使う**。丸めたり近い値に置き換えたりしない。本書と `CODEX_REF_yomu_lp.html` の両方に無いパターンが必要になったら、**実装せずに報告して指示を待つ**。
 
-指示書の記述とリポジトリの実態（ディレクトリ構成、既存のスタイリング方式、theme/ui分離の実装）が食い違っていた場合も、勝手に読み替えずに報告すること。
+本書の記述とリポジトリの実態（行番号のズレ、想定と違う実装）が食い違った場合も、勝手に読み替えずに報告すること。
+
 
 ---
 
 ## 付録A. SVGスプライト
 
-以下をそのまま `src/assets/yomu-sprite.svg` として保存する。アイコン21種と人物イラスト2種を含む。**内容を改変しないこと。**
+以下をそのまま `src/assets/yomu-sprite.svg` として保存し、§6の手順で `src/icons.jsx` にJSX化する。アイコン21種と人物イラスト2種を含む。**パスデータを改変しないこと。**
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -343,9 +454,7 @@ border-radius:14px; padding:13px 17px; box-shadow:var(--sh1);
 </svg>
 ```
 
-### 人物イラストの色を変える場合
-
-`il-woman`（スーツの女性・アドバイザー役）と `il-rookie`（初心者の男性）で使っている色は次の通り。変更が必要な場合はこの対応で置換する。
+### 人物イラストの配色
 
 | 用途 | 色 |
 |---|---|

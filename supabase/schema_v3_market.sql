@@ -1,4 +1,4 @@
--- 現実派: PR#3 相場照合キャッシュ追加SQL
+-- YOMU: PR#3 相場照合キャッシュ追加SQL
 -- 既存環境は Supabase Dashboard の SQL Editor で全文を実行してください。
 
 create table if not exists public.market_cache (

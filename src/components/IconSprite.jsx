@@ -1,3 +1,4 @@
+import React from "react";
 import yomuSprite from "../assets/yomu-sprite.svg?raw";
 
 export default function IconSprite() {

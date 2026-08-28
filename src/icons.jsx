@@ -1,0 +1,141 @@
+import React from "react";
+import { T } from "./theme.js";
+
+export function IconSprite() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <defs>
+      {/* ===== line icons (24x24, inherit stroke via currentColor) ===== */}
+      <symbol id="i-yield" viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></symbol>
+      <symbol id="i-occupancy" viewBox="0 0 24 24"><path d="M4 21V7l8-4 8 4v14"/><path d="M9 11h2M13 11h2M9 15h2M13 15h2"/><path d="M10 21v-3h4v3"/><path d="M2 21h20"/></symbol>
+      <symbol id="i-mortgage" viewBox="0 0 24 24"><path d="M3 10l9-6 9 6"/><path d="M6 10v8M10.5 10v8M15 10v8M19.5 10v8"/><path d="M2.5 21h19"/></symbol>
+      <symbol id="i-upkeep" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.2v2.4M12 18.4v2.4M3.2 12h2.4M18.4 12h2.4M5.9 5.9l1.7 1.7M16.4 16.4l1.7 1.7M18.1 5.9l-1.7 1.7M7.6 16.4l-1.7 1.7"/></symbol>
+      <symbol id="i-compare" viewBox="0 0 24 24"><path d="M3 20L20 5" strokeDasharray="3.5 3"/><path d="M3 20c6 0 10-3 17-6"/><path d="M20 5v9"/><circle cx="20" cy="5" r="1.6"/><circle cx="20" cy="14" r="1.6"/></symbol>
+      <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l1.7 4.6L18 9.2l-4.3 1.6L12 15.4l-1.7-4.6L6 9.2l4.3-1.6z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/><path d="M5 16l.6 1.5 1.5.6-1.5.6L5 20.2l-.6-1.5L2.9 18l1.5-.6z"/></symbol>
+      <symbol id="i-signal" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="4.5"/><circle cx="12" cy="7.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="16.5" r="1.6"/></symbol>
+      <symbol id="i-stress" viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="17" r="2.2"/></symbol>
+      <symbol id="i-metrics" viewBox="0 0 24 24"><path d="M3 21h18"/><rect x="4" y="12" width="3.6" height="6" rx="1"/><rect x="10.2" y="7" width="3.6" height="11" rx="1"/><rect x="16.4" y="3.5" width="3.6" height="14.5" rx="1"/></symbol>
+      <symbol id="i-manage" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><polyline points="9 15 11 17 15 13"/></symbol>
+      <symbol id="i-auction" viewBox="0 0 24 24"><path d="M13.5 3.2l5.3 5.3-2.6 2.6-5.3-5.3z"/><path d="M10.4 7.4L3.6 14.2a2 2 0 0 0 0 2.8l1.4 1.4a2 2 0 0 0 2.8 0l6.8-6.8"/><path d="M13 21h8"/></symbol>
+      <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M6 3h8l5 5v13H6z"/><polyline points="14 3 14 8 19 8"/><path d="M9 13h6M9 17h4"/></symbol>
+      <symbol id="i-sync" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.6-5.7L20 8"/><polyline points="20 3.5 20 8 15.5 8"/><path d="M20 12a8 8 0 0 1-13.6 5.7L4 16"/><polyline points="4 20.5 4 16 8.5 16"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><polyline points="14 3 14 8 19 8"/><path d="M8.5 13.5h7M8.5 17h5"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><polyline points="13 6 19 12 13 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><polyline points="4 12.5 9.5 18 20 6.5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5L22 20H2z"/><path d="M12 10v4.5M12 17.2v.1"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8.2-8 9.5C7.5 20.2 4 17 4 12V6z"/><polyline points="9 12 11 14 15 10"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M3 20c0-3.4 2.7-5.6 6-5.6s6 2.2 6 5.6"/><path d="M16 5.2a3.4 3.4 0 0 1 0 6.6M17.5 14.8c2.2.7 3.5 2.6 3.5 5.2"/></symbol>
+    
+      {/* ===== illustration: 女性アドバイザー ===== */}
+      <symbol id="il-woman" viewBox="0 0 200 210">
+        <path d="M100 28C62 28 54 58 56 88c1.4 21-3 46-8 66l26-4c-4-27-4-52 0-64 8-21 44-21 52 0 4 12 4 37 0 64l26 4c-5-20-9.4-45-8-66 2-30-6-60-44-60z" fill="#2A3040"/>
+        <rect x="88" y="102" width="24" height="46" rx="11" fill="#E8BE9F"/>
+        <path d="M100 146c-29 0-55 19-59 64h118c-4-45-30-64-59-64z" fill="#1E3E6B"/>
+        <path d="M82 150l18-8v68l-24 0z" fill="#2F5488"/>
+        <path d="M118 150l-18-8v68l24 0z" fill="#2F5488"/>
+        <path d="M100 142l-19 8 19 44 19-44z" fill="#FFFFFF"/>
+        <circle cx="84" cy="180" r="3.8" fill="#DBA53F"/>
+        <ellipse cx="60" cy="86" rx="6.5" ry="8.5" fill="#F6D8C0"/><ellipse cx="140" cy="86" rx="6.5" ry="8.5" fill="#F6D8C0"/>
+        <ellipse cx="100" cy="80" rx="40" ry="44" fill="#F6D8C0"/>
+        <path d="M100 32c-26 0-38 21-38 46 12-11 22-17 38-17s28 8 38 17c0-25-12-46-38-46z" fill="#2A3040"/>
+        <ellipse cx="73" cy="97" rx="8" ry="4.6" fill="#F0A392" opacity=".5"/><ellipse cx="127" cy="97" rx="8" ry="4.6" fill="#F0A392" opacity=".5"/>
+        <ellipse cx="85" cy="86" rx="4.6" ry="6" fill="#23293A"/><ellipse cx="115" cy="86" rx="4.6" ry="6" fill="#23293A"/>
+        <circle cx="86.7" cy="83.4" r="1.7" fill="#fff"/><circle cx="116.7" cy="83.4" r="1.7" fill="#fff"/>
+        <path d="M77 72q8-4.5 16-1M123 72q-8-4.5-16-1" stroke="#2A3040" strokeWidth="2.6" fill="none" strokeLinecap="round"/>
+        <path d="M93 101q7 6 14 0" stroke="#B4574B" strokeWidth="2.6" fill="none" strokeLinecap="round"/>
+        <path d="M148 168c6 18-6 32-26 32" stroke="#1E3E6B" strokeWidth="20" fill="none" strokeLinecap="round"/>
+        <g transform="rotate(-7 143 180)">
+          <rect x="112" y="156" width="64" height="46" rx="7" fill="#fff" stroke="#12233F" strokeWidth="2.6"/>
+          <rect x="120" y="182" width="9" height="12" rx="2.5" fill="#2F5488"/><rect x="133" y="174" width="9" height="20" rx="2.5" fill="#2F5488"/>
+          <rect x="146" y="166" width="9" height="28" rx="2.5" fill="#DBA53F"/><rect x="159" y="178" width="9" height="16" rx="2.5" fill="#C0392B"/>
+        </g>
+        <ellipse cx="118" cy="197" rx="10.5" ry="8" fill="#F6D8C0"/>
+      </symbol>
+    
+      {/* ===== illustration: はじめての人 ===== */}
+      <symbol id="il-rookie" viewBox="0 0 200 210">
+        <rect x="88" y="104" width="24" height="46" rx="11" fill="#E8BE9F"/>
+        <path d="M100 148c-29 0-55 19-59 62h118c-4-43-30-62-59-62z" fill="#7FA5CE"/>
+        <path d="M82 152l18-8v66l-24 0z" fill="#5D8AB8"/>
+        <path d="M118 152l-18-8v66l24 0z" fill="#5D8AB8"/>
+        <path d="M100 144l-18 8 18 40 18-40z" fill="#F4F7FB"/>
+        <ellipse cx="60" cy="88" rx="6.5" ry="8.5" fill="#F6D8C0"/><ellipse cx="140" cy="88" rx="6.5" ry="8.5" fill="#F6D8C0"/>
+        <ellipse cx="100" cy="82" rx="40" ry="43" fill="#F6D8C0"/>
+        <path d="M58 90A42 52 0 0 1 142 90C136 73 122 64 100 64S64 73 58 90Z" fill="#3A3226"/>
+        <ellipse cx="73" cy="99" rx="8" ry="4.6" fill="#F0A392" opacity=".45"/><ellipse cx="127" cy="99" rx="8" ry="4.6" fill="#F0A392" opacity=".45"/>
+        <ellipse cx="85" cy="88" rx="4.4" ry="5.8" fill="#23293A"/><ellipse cx="115" cy="88" rx="4.4" ry="5.8" fill="#23293A"/>
+        <circle cx="86.6" cy="85.5" r="1.6" fill="#fff"/><circle cx="116.6" cy="85.5" r="1.6" fill="#fff"/>
+        <path d="M78 75q7-4 14-1M122 75q-7-4-14-1" stroke="#3A3226" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+        <path d="M92 102q8 7 16 0" stroke="#B4574B" strokeWidth="2.6" fill="none" strokeLinecap="round"/>
+        <path d="M54 170c-7 16 3 30 22 32" stroke="#7FA5CE" strokeWidth="19" fill="none" strokeLinecap="round"/>
+        <g transform="rotate(9 72 184)">
+          <rect x="52" y="160" width="36" height="54" rx="8" fill="#fff" stroke="#12233F" strokeWidth="2.6"/>
+          <rect x="60" y="168" width="20" height="4" rx="2" fill="#C7D3E2"/>
+          <circle cx="64" cy="185" r="4.2" fill="#C0392B"/><circle cx="64" cy="197" r="4.2" fill="#12795A"/>
+          <rect x="72" y="181" width="10" height="3.4" rx="1.7" fill="#C7D3E2"/><rect x="72" y="193" width="10" height="3.4" rx="1.7" fill="#C7D3E2"/>
+        </g>
+        <ellipse cx="80" cy="199" rx="10.5" ry="8" fill="#F6D8C0"/>
+      </symbol>
+    </defs>
+    </svg>
+  );
+}
+
+export function Icon({ name, size = 22, color = "currentColor", style }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      style={{
+        stroke: color,
+        fill: "none",
+        strokeWidth: 1.7,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        flexShrink: 0,
+        ...style,
+      }}
+    >
+      <use href={`#i-${name}`} />
+    </svg>
+  );
+}
+
+export function IconTile({ name, tone = "ink" }) {
+  const tones = {
+    ink: {
+      background: "linear-gradient(150deg,#EAF0F9,#DCE6F4)",
+      color: T.blue,
+    },
+    gold: {
+      background: "linear-gradient(150deg,#FBF1DC,#F4E3BF)",
+      color: "#93671A",
+    },
+    red: {
+      background: "linear-gradient(150deg,#FDECEA,#FAD9D4)",
+      color: T.danger,
+    },
+  };
+  const selected = tones[tone] || tones.ink;
+
+  return (
+    <span
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 13,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flex: "0 0 auto",
+        background: selected.background,
+        color: selected.color,
+        boxShadow: "inset 0 1px 0 #fff",
+      }}
+    >
+      <Icon name={name} size={24} color={selected.color} style={{ strokeWidth: 1.75 }} />
+    </span>
+  );
+}

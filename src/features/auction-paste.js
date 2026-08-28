@@ -322,8 +322,7 @@ function evaluateValues(raw, line) {
     (value) => { values.active = value; });
 
   if (!values.case_no) errors.push("事件番号(case_no)がありません");
-  if (!values.bit_url) errors.push("BITの物件URL(bit_url)がありません");
-  else if (!isOfficialBitUrl(values.bit_url)) {
+  if (values.bit_url && !isOfficialBitUrl(values.bit_url)) {
     errors.push("物件URLはBIT公式サイト(https://www.bit.courts.go.jp/)に限ります");
   }
 
@@ -406,7 +405,7 @@ export function auctionTemplateCsv() {
     pref: "東京都", city: "文京区", address: "文京区○○", type: "マンション",
     min_price: 12890000, deposit: 2578000, bid_start: "2026-08-04",
     bid_end: "2026-08-12", open_date: "2026-08-19", built_year: 2001,
-    floor_area: 45.2, land_area: "", bit_url: "https://www.bit.courts.go.jp/app/example",
+    floor_area: 45.2, land_area: "", bit_url: "",
     active: true,
   };
   return "\uFEFF" + auctionPasteRowsToCsv([example]);

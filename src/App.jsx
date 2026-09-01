@@ -824,7 +824,7 @@ function buildNarrative(p, m, diag, exit, optLast) {
 function SheetFoot({ page, total, title }) {
   return (
     <div className="foot">
-      <span>現実派 — 不動産収支シミュレーター ／ {title}</span>
+      <span>YOMU — 不動産収支シミュレーター ／ {title}</span>
       <span>{page} / {total}</span>
     </div>
   );
@@ -896,7 +896,7 @@ function ReportView({ p, initialTitle, onClose }) {
 
       {/* 1. 表紙 */}
       <div className="sheet">
-        <div className="brand">現実派 ｜ REAL ESTATE REALITY REPORT</div>
+        <div className="brand">YOMU ｜ YIELD · OCCUPANCY · MORTGAGE · UPKEEP</div>
         <h1>{title}</h1>
         <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 分析期間: {p.simYears}年(月次計算)</div>
         <div style={{ marginTop: 40 }}>
@@ -1086,7 +1086,7 @@ function CompareReportView({ rows, onClose }) {
       </div>
 
       <div className="sheet">
-        <div className="brand">現実派 ｜ REAL ESTATE REALITY REPORT</div>
+        <div className="brand">YOMU ｜ YIELD · OCCUPANCY · MORTGAGE · UPKEEP</div>
         <h1>{title}</h1>
         <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 現実シナリオ(売却込み)ベースの比較</div>
         <h3 style={{ marginTop: 34 }}>比較対象</h3>
@@ -3120,6 +3120,10 @@ export default function App() {
 
         <footer style={{ background: T.warnBg, border: `1px solid #E8D9BC`, borderRadius: 10,
           padding: "12px 14px", fontSize: 12, color: T.warnInk, lineHeight: 1.7 }}>
+          <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            <strong style={{ fontFamily: T.serif, fontSize: 18, letterSpacing: ".12em" }}>YOMU</strong>
+            <span style={{ fontSize: 11.5, fontWeight: 700 }}>Yield・Occupancy・Mortgage・Upkeep</span>
+          </div>
           注意:税計算は限界税率による簡易計算で、累進・各種控除・建物附属設備の償却区分・資本的支出の資産計上は簡略化しています。
           AI取得データはウェブ検索に基づく推定値であり、最終判断には自身でのレントロール・登記・管理規約等の一次資料確認が必要です。
           「楽観」は満室・金利固定・家賃一定・退去/設備/税コストなしの前提を再現したものです。

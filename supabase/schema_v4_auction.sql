@@ -1,4 +1,4 @@
--- 現実派: PR#5 競売物件スキーマ追加SQL
+-- YOMU: PR#5 競売物件スキーマ追加SQL
 -- 既存環境は Supabase Dashboard の SQL Editor で全文を実行してください。
 
 create table if not exists public.auction_items (

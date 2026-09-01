@@ -1,4 +1,4 @@
--- 現実派: Supabase 初期セットアップSQL
+-- YOMU: Supabase 初期セットアップSQL
 -- Supabaseダッシュボード → SQL Editor に全文貼り付けて Run してください
 
 -- ユーザープロファイル(プラン・AI利用回数・Stripe顧客ID)

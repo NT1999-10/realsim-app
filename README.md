@@ -1,4 +1,4 @@
-# 現実派 不動産収支シミュレーター(アカウント認証+課金対応版)
+# YOMU 不動産収支シミュレーター(アカウント認証+課金対応版)
 
 Vercel + Supabase + Stripe による本番SaaS構成。
 アカウント作成/ログイン、プランのDB管理、決済完了時の自動Pro開放に対応。
@@ -103,7 +103,7 @@ Proユーザーはアプリの「競売」タブから `POST /api/auction-list` 
 BITへの主動線は、事件番号をコピーしてBITトップページの検索画面を開く方式です。
 
 ### 5. Stripe(約15分)
-1. https://stripe.com でアカウント作成 → 商品「現実派 Pro」月額¥1,480のサブスクを作成
+1. https://stripe.com でアカウント作成 → 商品「YOMU Pro」月額¥1,480のサブスクを作成
 2. Payment Link を発行 → URLを `src/plan.js` の `PURCHASE_URL` に設定
 3. Developers → Webhooks → Add endpoint:
    - URL: `https://<あなたのapp>/api/stripe-webhook`

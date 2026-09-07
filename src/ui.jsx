@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { T } from "./theme.js";
 import { Icon } from "./icons.jsx";
 
@@ -6,41 +6,99 @@ import { Icon } from "./icons.jsx";
 export function Field({ label, value, onChange, unit, step = 1, min, hint, help }) {
   const [showHelp, setShowHelp] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!showHelp) return;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setShowHelp(false);
+    };
+    const onEsc = (e) => { if (e.key === "Escape") setShowHelp(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [showHelp]);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <label style={{ display: "block" }}>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: T.ink, display: "flex",
+          alignItems: "center", gap: 5, marginBottom: 6 }}>
+          {label}
+          {help && (
+            <button type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!showHelp && wrapRef.current) {
+                  const rect = wrapRef.current.getBoundingClientRect();
+                  setAlignRight(rect.left + 272 > window.innerWidth - 8);
+                }
+                setShowHelp(!showHelp);
+              }}
+              style={{ width: 18, height: 18, borderRadius: T.pill, border: `1px solid ${T.gold}`,
+                background: showHelp ? T.gold : "transparent", color: showHelp ? "#FFF" : T.gold,
+                fontSize: 11, lineHeight: "15px", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+              ?</button>
+          )}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", background: "#FFF",
+          border: `1.5px solid ${focused ? T.teal : T.line2}`, borderRadius: T.rS,
+          padding: "0 14px", boxShadow: focused ? "0 0 0 4px rgba(74,116,171,.14)" : "none",
+          transition: "border-color .18s, box-shadow .18s" }}>
+          <input type="number" value={value} step={step} min={min}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+            style={{ flex: 1, width: "100%", minWidth: 0, padding: "11px 0", border: "none",
+              outline: "none", fontFamily: T.mono, fontSize: 19, fontWeight: 700,
+              textAlign: "right", color: T.ink, background: "transparent",
+              fontVariantNumeric: "tabular-nums" }} />
+          {unit && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.faint,
+              marginLeft: 8, whiteSpace: "nowrap" }}>{unit}</span>
+          )}
+        </span>
+      </label>
+      {help && showHelp && (
+        <div style={{
+          position: "absolute", zIndex: 60, top: "100%", marginTop: 6,
+          left: alignRight ? "auto" : 0, right: alignRight ? 0 : "auto",
+          width: 272, maxWidth: "min(272px, 76vw)",
+          background: "#FFFFFF", border: `1px solid ${T.line2}`,
+          borderRadius: T.rS, boxShadow: T.sh2, padding: "12px 14px",
+          fontSize: 12.5, lineHeight: 1.85, color: T.ink, fontWeight: 500,
+        }}>{help}</div>
+      )}
+      {hint && (
+        <span style={{ fontSize: 12, color: T.faint, display: "block", marginTop: 4 }}>
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function TextField({ label, value, onChange, placeholder, hint }) {
+  const [focused, setFocused] = useState(false);
   return (
     <label style={{ display: "block" }}>
-      <span style={{ fontSize: 13.5, fontWeight: 700, color: T.ink, display: "flex",
-        alignItems: "center", gap: 5, marginBottom: 6 }}>
-        {label}
-        {help && (
-          <button type="button"
-            onClick={(e) => { e.preventDefault(); setShowHelp(!showHelp); }}
-            style={{ width: 18, height: 18, borderRadius: T.pill, border: `1px solid ${T.gold}`,
-              background: showHelp ? T.gold : "transparent", color: showHelp ? "#FFF" : T.gold,
-              fontSize: 11, lineHeight: "15px", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-            ?</button>
-        )}
-      </span>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: T.ink,
+        display: "block", marginBottom: 6 }}>{label}</span>
       <span style={{ display: "flex", alignItems: "center", background: "#FFF",
         border: `1.5px solid ${focused ? T.teal : T.line2}`, borderRadius: T.rS,
         padding: "0 14px", boxShadow: focused ? "0 0 0 4px rgba(74,116,171,.14)" : "none",
         transition: "border-color .18s, box-shadow .18s" }}>
-        <input type="number" value={value} step={step} min={min}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        <input type="text" value={value} placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           style={{ flex: 1, width: "100%", minWidth: 0, padding: "11px 0", border: "none",
-            outline: "none", fontFamily: T.mono, fontSize: 19, fontWeight: 700,
-            textAlign: "right", color: T.ink, background: "transparent",
-            fontVariantNumeric: "tabular-nums" }} />
-        {unit && (
-          <span style={{ fontSize: 13, fontWeight: 700, color: T.faint,
-            marginLeft: 8, whiteSpace: "nowrap" }}>{unit}</span>
-        )}
+            outline: "none", fontSize: 15, textAlign: "left", color: T.ink,
+            background: "transparent" }} />
       </span>
-      {help && showHelp && (
-        <span style={{ fontSize: 12, color: T.aiInk, display: "block", marginTop: 6,
-          lineHeight: 1.65, background: T.goldSoft, borderRadius: T.rS,
-          padding: "7px 10px" }}>{help}</span>
-      )}
       {hint && (
         <span style={{ fontSize: 12, color: T.faint, display: "block", marginTop: 4 }}>
           {hint}
@@ -74,12 +132,13 @@ export function Kpi({ label, value, color, sub }) {
   const isEnglishLabel = typeof label === "string" && /^[\x00-\x7F]+$/.test(label);
   return (
     <div style={{ background: T.card, borderRadius: T.rS, border: `1px solid ${T.line}`,
-      boxShadow: T.sh1, padding: "14px 16px", flex: "1 1 145px" }}>
+      boxShadow: T.sh1, padding: "14px 16px", flex: "1 1 172px" }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, color: T.faint,
-        letterSpacing: ".04em", marginBottom: 4,
+        letterSpacing: ".04em", marginBottom: 4, whiteSpace: "nowrap",
         fontFamily: isEnglishLabel ? T.mono : T.sans }}>{label}</div>
       <div style={{ fontFamily: T.mono, fontSize: 26, fontWeight: 700,
-        fontVariantNumeric: "tabular-nums", color: color || T.ink, lineHeight: 1.2 }}>
+        fontVariantNumeric: "tabular-nums", color: color || T.ink, lineHeight: 1.2,
+        whiteSpace: "nowrap" }}>
         {value}
       </div>
       {sub && <div style={{ fontSize: 12, color: T.faint, marginTop: 4 }}>{sub}</div>}
@@ -126,3 +185,4 @@ export function LockCard({ onUpgrade, label, children }) {
     </div>
   );
 }
+

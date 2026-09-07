@@ -81,7 +81,7 @@ function MarketTooltip({ active, payload }) {
   if (!point) return null;
   return (
     <div style={{ padding: "8px 10px", borderRadius: 8, background: "#FFF",
-      border: `1px solid ${T.line}`, boxShadow: "0 8px 22px rgba(31,58,82,.14)",
+      border: `1px solid ${T.line}`, boxShadow: T.sh2,
       fontSize: 11.5, lineHeight: 1.7, color: T.ink }}>
       <div style={{ fontWeight: 700, color: point.target ? T.real : T.navy }}>
         {point.target ? "対象物件" : "成約事例"}

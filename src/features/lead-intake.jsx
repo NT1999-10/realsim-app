@@ -165,7 +165,7 @@ export default function LeadIntake({ onAdd }) {
         <div onMouseDown={(e) => e.stopPropagation()}
           style={{ width: "min(660px,100%)", maxHeight: "90vh", overflowY: "auto",
             background: "#FFF", borderRadius: 16, padding: 20,
-            boxShadow: "0 22px 60px rgba(16,32,46,.24)" }}>
+            boxShadow: T.sh3 }}>
           <div style={{ display: "flex", justifyContent: "space-between",
             alignItems: "center", gap: 12, marginBottom: 14 }}>
             <h3 style={{ margin: 0, fontSize: 16, color: T.navy }}>ページから取り込み</h3>

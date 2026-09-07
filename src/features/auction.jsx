@@ -486,7 +486,7 @@ function AuctionCard({ item, followed, onBid, onToggleFollow }) {
 
   return (
     <article style={{ border: `1px solid ${T.line}`, borderRadius: 12,
-      padding: 14, background: "#FFF", boxShadow: "0 6px 18px rgba(31,58,82,.05)" }}>
+      padding: 14, background: "#FFF", boxShadow: T.sh1 }}>
       <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between",
         gap: 10, flexWrap: "wrap" }}>
         <div>

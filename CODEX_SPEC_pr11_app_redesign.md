@@ -17,6 +17,27 @@
 - グラフは recharts、色は `T` から供給されている
 - 詳細モードのパラメータは `<Section no="01" title="...">` 〜 `09` で**既にカテゴリ分けされている**
 
+### 現在の進捗（2026-09時点）
+
+**PR-A と PR-B は実装済み・マージ済み。** これらを再実装・再修正しないこと。
+
+| PR | 状態 |
+|---|---|
+| PR-A（§1 theme.js / §3 index.html / §6 スプライト設置） | **完了** |
+| PR-B（§4 ui.jsx の7つ） | **完了** |
+| PR-C（§2 T.real の意味分離とグラフの2色化） | これから |
+| PR-D（§5 App.jsx の直書きスタイル） | これから |
+| PR-E（§6 アイコンとイラストの適用・空状態） | これから |
+
+なお、マージ後に別PR（PR#14）で次の修正が入っている。**これらを元に戻さないこと。**
+
+- `T.mono` は Roboto Mono（JetBrains Mono ではない）
+- `Kpi` の flex-basis は 172px、label と value に `whiteSpace: "nowrap"`
+- `Field` の `?` 解説は絶対配置のポップオーバー
+- `ui.jsx` に `TextField` が追加されている
+- `Section` とかんたん入力のグリッドは `minmax(164px, 1fr)`
+- `src/App.jsx` L3028付近の Field ラベルは「管理費・修繕積立金」
+
 ### やらないこと（スコープ外・違反したPRは却下）
 
 - **計算エンジン（`src/engine.js`）には一切触れない。** 数値・関数・引数を変更しない
@@ -73,7 +94,7 @@ export const T = {
   // 書体
   serif: '"Noto Serif JP",serif',
   sans: '"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif',
-  mono: '"JetBrains Mono",ui-monospace,Menlo,monospace',
+  mono: '"Roboto Mono",ui-monospace,SFMono-Regular,Menlo,monospace',
 
   // 角丸
   r: 16, rS: 10, rXs: 8, pill: 999,
@@ -123,11 +144,11 @@ export const T = {
 フォント読み込みと `body` の背景を変更する。`<title>` も直す。
 
 ```html
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 ```
 
 - 現在の `Shippori Mincho` を `Noto Serif JP` に置き換える（LPと揃えるため）
-- `JetBrains Mono` を**新規追加**する（現在は読み込まれておらず、数値がmonoになっていない）
+- `Roboto Mono` を**新規追加**する（数値用。ゼロにドットもスラッシュも無い字形を選んでいる。JetBrains Mono は使わない）
 - `<title>` を `YOMU — 不動産収支シミュレーター` に変更する
 
 `<style>` ブロックの `body` 背景を、青緑のradial-gradient + ドットグリッドから、LPの方眼紙に置き換える:
@@ -346,20 +367,38 @@ JSXへの変換時の注意: `class` → `className`、`stroke-width` → `strok
 
 ---
 
-## 9. 完了条件
+## 9. 完了条件（Codexが機械的に確認すること）
 
-- [ ] `src/engine.js` に差分が無い。計算結果が変更前と1円も変わらない
-- [ ] `src/App.jsx` が分割されていない（ファイル数が増えていない。`icons.jsx` を除く）
-- [ ] `npm run build` が通る
-- [ ] 旧配色の残骸が無い: `2D7DD2` `2BB8A3` `D14B32` `9DB6C8` `1F3A52` `E2E8EF` `E9EDF1` `16222E` `10202E` `5A6B7B` を全ファイルgrepして、`theme.js` 以外にヒットしない
-- [ ] すべての金額・率・年数が `fontFamily: T.mono` + `fontVariantNumeric: "tabular-nums"` で表示され、桁が縦に揃う
-- [ ] `fontSize` が 12px 未満の本文が残っていない（ラベル・注釈は12px以上、本文は13.5px以上）
-- [ ] 影は `T.sh1` / `T.sh2` / `T.sh3` のみ。`boxShadow` の直書きが無い
-- [ ] 現実シナリオの線が藍・実線、楽観が山吹・破線になっている
-- [ ] 1画面あたりの朱の使用が3箇所以内
-- [ ] 空状態の画面すべてにイラストとCTAがある
-- [ ] 幅 390px / 768px / 1440px で横スクロールが出ない
-- [ ] 全6タブ（ホーム/シミュレーション/物件比較/分析/運用管理/競売）とレポート出力画面のスクリーンショットを添付し、`CODEX_REF_yomu_lp.html` と並べて同一プロダクトに見えることを確認
+コマンドを実行し、**結果をPR説明に貼ること**。
+
+- [ ] `npm run build` が成功する
+- [ ] `git diff src/engine.js` が **空**（計算ロジックに差分が無い）
+- [ ] `git diff src/logo.jsx` が **空**
+- [ ] `git diff --stat` に、そのPRのスコープ外のファイルが含まれていない
+- [ ] `package.json` に差分が無い（新規パッケージを追加していない）
+- [ ] 旧配色が残っていない: `2D7DD2` `2BB8A3` `D14B32` `9DB6C8` `1F3A52` `E2E8EF` `E9EDF1` `16222E` `10202E` `5A6B7B` を `grep -rn` して、`src/theme.js` 以外にヒットしない
+- [ ] `grep -rn 'JetBrains' src/ index.html` が **0件**
+- [ ] `grep -rn 'boxShadow: "0' src/` が **0件**（影は `T.sh1` / `T.sh2` / `T.sh3` のみ）
+- [ ] `src/App.jsx` のファイル数が増えていない（分割リファクタリングをしていない）
+
+## 報告すること
+
+PRの説明に次を書く。**スクリーンショットは不要**（Codexはブラウザを持たないため求めていない）。ブラウザでの画面確認を試みないこと。
+
+1. 上の各コマンドの実行結果
+2. 変更した箇所ごとに、**どのファイルの何行目をどう変えたか**の対応表
+3. 指示書の記述とリポジトリの実態が食い違っていた箇所
+4. 指示どおりに実装できなかった点があれば、その理由と代わりに何をしたか
+
+## 人間がプレビューで確認すること（Codexは判定しない）
+
+Vercelのプレビューリンクで、依頼者が目視で確認する。**Codexはこの節を検証しようとしないこと。**
+
+- 現実シナリオの線が藍の実線、楽観が山吹の破線になっている
+- 危険・マイナス値だけが朱で、1画面あたり3箇所以内に収まっている
+- 全6タブ（ホーム/シミュレーション/物件比較/分析/運用管理/競売）とレポート出力画面が崩れていない
+- 幅 390px / 768px / 1440px で横スクロールが出ない
+- 「まだ〜ありません」だけの空画面が無くなっている（PR-E）
 
 ## 10. 判断に迷ったとき
 

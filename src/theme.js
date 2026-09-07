@@ -38,7 +38,7 @@ export const T = {
   // 書体
   serif: '"Noto Serif JP",serif',
   sans: '"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif',
-  mono: '"JetBrains Mono",ui-monospace,Menlo,monospace',
+  mono: '"Roboto Mono",ui-monospace,SFMono-Regular,Menlo,monospace',
 
   // 角丸
   r: 16, rS: 10, rXs: 8, pill: 999,
@@ -48,3 +48,4 @@ export const T = {
   sh2: "0 2px 4px rgba(18,35,63,.05), 0 18px 40px -20px rgba(18,35,63,.35)",
   sh3: "0 30px 70px -30px rgba(18,35,63,.45)",
 };
+

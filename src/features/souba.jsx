@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import { supabase, authEnabled } from "../auth.js";
 import { T } from "../theme.js";
-import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "../ui.jsx";
+import { Field, TextField, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "../ui.jsx";
 
 const PREFECTURES = [
   ["01", "北海道"], ["02", "青森県"], ["03", "岩手県"], ["04", "宮城県"],
@@ -34,11 +34,6 @@ const STAGE_ERRORS = {
   timeout: "データ取得に時間がかかっています。時間をおいて再度お試しください",
   parse: "データの取得に失敗しました。時間をおいて再度お試しください",
   other: "データの取得に失敗しました。時間をおいて再度お試しください",
-};
-
-const inputStyle = {
-  width: "100%", padding: "8px 10px", border: `1px solid ${T.line}`,
-  borderRadius: 6, fontSize: 14, color: T.ink, background: "#FBFCFD",
 };
 
 const unitMan = (value) => {
@@ -165,14 +160,9 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
         gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <Select label="都道府県" value={pref}
           onChange={(value) => { setPref(value); clearResult(); }} options={PREFECTURES} />
-        <label style={{ display: "block" }}>
-          <span style={{ fontSize: 12, color: T.sub, display: "block", marginBottom: 3 }}>
-            市区町村
-          </span>
-          <input type="text" value={cityName}
-            onChange={(e) => { setCityName(e.target.value); clearResult(); }}
-            placeholder="例: 文京区" style={inputStyle} />
-        </label>
+        <TextField label="市区町村" value={cityName}
+          onChange={(value) => { setCityName(value); clearResult(); }}
+          placeholder="例: 文京区" />
         <Select label="種別" value={type}
           onChange={(value) => { setType(value); clearResult(); }} options={TYPE_OPTIONS} />
         <Field label="専有面積" value={area} onChange={setArea}
@@ -250,3 +240,4 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
     </LockCard>
   );
 }
+

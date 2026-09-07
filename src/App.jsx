@@ -362,8 +362,8 @@ function AnalysisTab({ p }) {
               labelStyle={{ fontSize: 12 }} />
             <Bar dataKey="offset" stackId="t" fill="transparent" legendType="none" tooltipType="none" />
             <Bar dataKey="span" stackId="t" fill={T.blue} radius={[0, 3, 3, 0]} barSize={16} />
-            <ReferenceLine x={base.total / 10000 + sens.shift} stroke={T.real} strokeWidth={2}
-              label={{ value: "現状", fontSize: 11, fill: T.real, position: "top" }} />
+            <ReferenceLine x={base.total / 10000 + sens.shift} stroke={T.scenario} strokeWidth={2.8}
+              label={{ value: "現状", fontSize: 11, fill: T.scenario, position: "top" }} />
           </ComposedChart>
         </ResponsiveContainer>
         <div style={{ fontSize: 11, color: T.sub, margin: "4px 8px 10px", lineHeight: 1.6 }}>
@@ -552,9 +552,9 @@ function OpsTab({ p, setP, actuals, persist }) {
               <Tooltip formatter={(v) => v.toLocaleString() + "万円"} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
-              <Line type="monotone" dataKey="計画累積" stroke={T.opt} strokeWidth={2}
-                strokeDasharray="6 4" dot={false} />
-              <Line type="monotone" dataKey="実績累積" stroke={T.real} strokeWidth={2.5} dot />
+              <Line type="monotone" dataKey="計画累積" stroke={T.opt} strokeWidth={2.4}
+                strokeDasharray="5 4" dot={false} />
+              <Line type="monotone" dataKey="実績累積" stroke={T.scenario} strokeWidth={2.8} dot />
             </ComposedChart>
           </ResponsiveContainer>
         )}
@@ -950,8 +950,8 @@ function ReportView({ p, initialTitle, onClose }) {
           <YAxis tick={{ fontSize: 12 }} width={64} />
           <Legend wrapperStyle={{ fontSize: 13 }} />
           <ReferenceLine y={0} stroke="#16222E" />
-          <Line type="monotone" dataKey="楽観" stroke={T.opt} strokeWidth={2.5} strokeDasharray="7 5" dot={false} />
-          <Line type="monotone" dataKey="保守" stroke={T.real} strokeWidth={3} dot={false} />
+          <Line type="monotone" dataKey="楽観" stroke={T.opt} strokeWidth={2.4} strokeDasharray="5 4" dot={false} />
+          <Line type="monotone" dataKey="保守" stroke={T.scenario} strokeWidth={2.8} dot={false} />
         </ComposedChart>
         <p className="para" style={{ marginTop: 10 }}>{n.trajectory}</p>
         <SheetFoot page={3} total={TOTAL} title={title} />
@@ -969,7 +969,7 @@ function ReportView({ p, initialTitle, onClose }) {
           <Legend wrapperStyle={{ fontSize: 13 }} />
           <ReferenceLine yAxisId="cf" y={0} stroke="#16222E" />
           <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
-            {chartData.map((d, i) => <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.blue} />)}
+            {chartData.map((d, i) => <Cell key={i} fill={d["単年CF"] < 0 ? T.danger : T.scenario} />)}
           </Bar>
           <Line yAxisId="bal" type="monotone" dataKey="残債" stroke={T.sub} strokeWidth={2} dot={false} />
         </ComposedChart>
@@ -2907,11 +2907,11 @@ export default function App() {
               <Tooltip formatter={(v) => v.toLocaleString() + "万円"} labelFormatter={(l) => l + "年目"} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
-              <Area type="monotone" dataKey="楽観累積" stroke="none" fill={T.realSoft}
+              <Area type="monotone" dataKey="楽観累積" stroke="none" fill={T.optSoft}
                     activeDot={false} legendType="none" tooltipType="none" />
-              <Line type="monotone" dataKey="楽観累積" stroke={T.opt} strokeWidth={2}
-                    strokeDasharray="6 4" dot={false} />
-              <Line type="monotone" dataKey="保守累積" stroke={T.real} strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="楽観累積" stroke={T.opt} strokeWidth={2.4}
+                    strokeDasharray="5 4" dot={false} />
+              <Line type="monotone" dataKey="保守累積" stroke={T.scenario} strokeWidth={2.8} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </section>
@@ -2932,7 +2932,7 @@ export default function App() {
               <ReferenceLine yAxisId="cf" y={0} stroke={T.ink} strokeWidth={1} />
               <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
                 {chartData.map((d, i) => (
-                  <Cell key={i} fill={d["単年CF"] < 0 ? T.real : T.blue} />
+                  <Cell key={i} fill={d["単年CF"] < 0 ? T.danger : T.scenario} />
                 ))}
               </Bar>
               <Line yAxisId="bal" type="monotone" dataKey="残債" stroke={T.sub}

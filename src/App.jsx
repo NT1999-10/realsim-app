@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 44248)
+Total output lines: 3151
+
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid,
@@ -42,15 +45,17 @@ function Check({ label, checked, onChange }) {
 function Section({ no, title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section style={{ background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
-      border: `1px solid ${T.line}`, marginBottom: 12 }}>
+    <section style={{ background: T.card, borderRadius: T.r, boxShadow: T.sh1, padding: 22,
+      border: `1px solid ${T.line}`, marginBottom: 14 }}>
       <h2 onClick={() => setOpen(!open)} style={{
-        fontSize: 13, fontWeight: 700, color: T.navy, margin: 0,
-        letterSpacing: "0.06em", borderBottom: open ? `3px solid ${T.blue}` : "none",
-        paddingBottom: open ? 6 : 0, marginBottom: open ? 12 : 0,
-        display: "flex", justifyContent: "space-between", cursor: "pointer" }}>
+        fontSize: 17, fontWeight: 700, fontFamily: T.serif, color: T.navy, margin: 0,
+        letterSpacing: "0.01em", borderBottom: open ? `1px solid ${T.line}` : "none",
+        paddingBottom: open ? 10 : 0, marginBottom: open ? 16 : 0,
+        display: "flex", alignItems: "center", gap: 10,
+        justifyContent: "space-between", cursor: "pointer" }}>
         <span>{title}</span>
-        <span style={{ color: T.sub, fontWeight: 400 }}>{no} {open ? "−" : "+"}</span>
+        <span style={{ fontFamily: T.mono, fontSize: 11, letterSpacing: ".14em",
+          color: T.gold, fontWeight: 700 }}>{no} {open ? "−" : "+"}</span>
       </h2>
       {open && <div style={{ display: "grid", gap: 12,
         gridTemplateColumns: "repeat(auto-fit, minmax(164px, 1fr))" }}>{children}</div>}
@@ -353,10 +358,10 @@ function AnalysisTab({ p }) {
           <ComposedChart data={sens.data} layout="vertical"
             margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
             <CartesianGrid stroke={T.line} strokeDasharray="2 4" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 11, fill: T.sub }}
+            <XAxis type="number" tick={{ fontSize: 11, fill: T.faint }}
               tickFormatter={(v) => Math.round(v - sens.shift).toLocaleString()} />
             <YAxis type="category" dataKey="label" width={138}
-              tick={{ fontSize: 11, fill: T.ink }} />
+              tick={{ fontSize: 11, fill: T.faint }} />
             <Tooltip formatter={(v, n, pr) =>
               [`${pr.payload.loV.toLocaleString()} 〜 ${pr.payload.hiV.toLocaleString()}万円`, "総合損益の振れ幅"]}
               labelStyle={{ fontSize: 12 }} />
@@ -376,10 +381,10 @@ function AnalysisTab({ p }) {
         <ResponsiveContainer width="100%" height={240}>
           <ComposedChart data={exit} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
-            <XAxis dataKey="year" tick={{ fontSize: 11, fill: T.sub }} unit="年" />
-            <YAxis tick={{ fontSize: 11, fill: T.sub }} width={56} />
+            <XAxis dataKey="year" tick={{ fontSize: 11, fill: T.faint }} unit="年" />
+            <YAxis tick={{ fontSize: 11, fill: T.faint }} width={56} />
             <Tooltip formatter={(v) => v.toLocaleString() + "万円"} labelFormatter={(l) => l + "年目に売却した場合"} />
-            <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
+            <ReferenceLine y={0} stroke={T.line2} strokeWidth={1} />
             <Line type="monotone" dataKey="総合損益" stroke={T.blue} strokeWidth={2.5} dot={false} />
             {bestExit && (
               <ReferenceLine x={bestExit.year} stroke={T.good} strokeDasharray="4 3"
@@ -547,11 +552,11 @@ function OpsTab({ p, setP, actuals, persist }) {
           <ResponsiveContainer width="100%" height={220} style={{ marginTop: 14 }}>
             <ComposedChart data={chart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: T.sub }} />
-              <YAxis tick={{ fontSize: 11, fill: T.sub }} width={48} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: T.faint }} />
+              <YAxis tick={{ fontSize: 11, fill: T.faint }} width={48} />
               <Tooltip formatter={(v) => v.toLocaleString() + "万円"} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
+              <ReferenceLine y={0} stroke={T.line2} strokeWidth={1} />
               <Line type="monotone" dataKey="計画累積" stroke={T.opt} strokeWidth={2.4}
                 strokeDasharray="5 4" dot={false} />
               <Line type="monotone" dataKey="実績累積" stroke={T.scenario} strokeWidth={2.8} dot />
@@ -719,16 +724,18 @@ function diagnose(q, m) {
 
 function DiagnosisCard({ diag }) {
   const conf = {
-    ok: { color: T.good, bg: "rgba(46,125,110,0.07)", label: "健全" },
-    warn: { color: T.warnInk, bg: T.warnBg, label: "要注意" },
-    danger: { color: T.real, bg: "rgba(179,64,46,0.07)", label: "危険" },
+    ok: { color: T.good, bg: T.goodSoft, line: T.goodLine, label: "健全", lamp: "g" },
+    warn: { color: T.warnInk, bg: T.warnBg, line: T.warnLine, label: "要注意", lamp: "y" },
+    danger: { color: T.danger, bg: T.dangerSoft, line: "#F3C3BC", label: "危険", lamp: "r" },
   }[diag.level];
   return (
-    <section style={{ ...cardSt, borderLeft: `5px solid ${conf.color}`, background: conf.bg }}>
+    <section style={{ ...cardSt, border: `1px solid ${conf.line}`,
+      borderLeft: `5px solid ${conf.color}`, background: conf.bg }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ width: 12, height: 12, borderRadius: 6, background: conf.color,
-          display: "inline-block" }} />
-        <span style={{ fontSize: 15, fontWeight: 800, color: conf.color }}>診断: {conf.label}</span>
+        <span style={{ width: 14, height: 14, borderRadius: 7, background: conf.color,
+          boxShadow: `0 0 0 4px ${conf.color}33`, display: "inline-block" }} />
+        <span style={{ fontFamily: T.serif, fontSize: 19, fontWeight: 700,
+          color: conf.color }}>診断: {conf.label}</span>
       </div>
       <p style={{ fontSize: 13, lineHeight: 1.85, margin: "0 0 8px", color: T.ink }}>
         {diag.summary.join(" ")}</p>
@@ -753,31 +760,31 @@ const REPORT_DISCLAIMER = "本レポートはユーザーが設定した前提�
 const REPORT_CSS = `
   .rp-overlay{position:fixed;inset:0;z-index:200;background:#4A5158;overflow:auto;padding:20px 12px 60px}
   .rp-bar{position:sticky;top:0;z-index:210;display:flex;gap:10px;align-items:center;justify-content:center;
-    flex-wrap:wrap;padding:10px;background:rgba(22,34,46,.94);border-radius:12px;max-width:1122px;margin:0 auto 18px}
+    flex-wrap:wrap;padding:10px;background:rgba(18,35,63,.94);border-radius:12px;max-width:1122px;margin:0 auto 18px}
   .rp-bar input{padding:9px 14px;border-radius:8px;border:none;font-size:14px;width:300px;font-family:inherit}
   .rp-bar button{padding:9px 20px;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer}
   .sheet{width:1122px;height:793px;background:#fff;margin:0 auto 20px;padding:50px 56px;
-    box-shadow:0 10px 34px rgba(0,0,0,.45);position:relative;overflow:hidden;color:#16222E;
+    box-shadow:${T.sh2};position:relative;overflow:hidden;color:${T.ink};
     font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif}
-  .sheet h1{font-size:34px;margin:0 0 6px;color:#1F3A52;line-height:1.4}
-  .sheet h2{font-size:21px;margin:0 0 16px;color:#1F3A52;border-bottom:3px solid #1F3A52;padding-bottom:8px}
-  .sheet h3{font-size:15px;margin:0 0 8px;color:#1F3A52}
-  .sheet .brand{font-size:13px;font-weight:700;letter-spacing:.2em;color:#B3402E;margin-bottom:14px}
+  .sheet h1{font-size:34px;margin:0 0 6px;color:${T.navy};line-height:1.4}
+  .sheet h2{font-size:21px;margin:0 0 16px;color:${T.navy};border-bottom:3px solid ${T.navy};padding-bottom:8px}
+  .sheet h3{font-size:15px;margin:0 0 8px;color:${T.navy}}
+  .sheet .brand{font-size:13px;font-weight:700;letter-spacing:.2em;color:${T.gold};margin-bottom:14px}
   .sheet .foot{position:absolute;left:56px;right:56px;bottom:22px;display:flex;justify-content:space-between;
-    font-size:11px;color:#8A97A3;border-top:1px solid #E2E8EF;padding-top:8px}
+    font-size:11px;color:${T.faint};border-top:1px solid ${T.line};padding-top:8px}
   .sheet table.pt{border-collapse:collapse;width:100%;font-size:12.5px}
-  .sheet table.pt td{padding:6px 10px;border-bottom:1px solid #E9EDF1}
-  .sheet table.pt td:first-child{color:#5B6B7A;width:47%}
+  .sheet table.pt td{padding:6px 10px;border-bottom:1px solid ${T.line}}
+  .sheet table.pt td:first-child{color:${T.faint};width:47%}
   .sheet table.pt td:last-child{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
   .sheet table.dt{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .sheet table.dt th{padding:8px 10px;border-bottom:2px solid #1F3A52;color:#1F3A52;text-align:right}
+  .sheet table.dt th{padding:8px 10px;border-bottom:2px solid ${T.navy};color:${T.navy};text-align:right}
   .sheet table.dt th:first-child{text-align:left}
-  .sheet table.dt td{padding:7px 10px;border-bottom:1px solid #E9EDF1;text-align:right}
+  .sheet table.dt td{padding:7px 10px;border-bottom:1px solid ${T.line};text-align:right}
   .sheet table.dt td:first-child{text-align:left;font-weight:700}
   .sheet .para{font-size:13.5px;line-height:2;text-align:justify}
   .sheet .kpi3{display:flex;gap:16px;margin:24px 0}
-  .sheet .kpi3>div{flex:1;border:1px solid #E2E8EF;border-radius:12px;padding:15px 18px}
-  .sheet .kpi3 .l{font-size:12px;color:#5B6B7A}
+  .sheet .kpi3>div{flex:1;border:1px solid ${T.line};border-radius:12px;padding:15px 18px}
+  .sheet .kpi3 .l{font-size:12px;color:${T.faint}}
   .sheet .kpi3 .v{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px}
   .sheet .flagline{font-size:13px;line-height:2}
   .sheet .verdict-badge{display:inline-flex;align-items:center;gap:10px;border-radius:14px;
@@ -945,11 +952,11 @@ function ReportView({ p, initialTitle, onClose }) {
         <h2>2. 累積キャッシュフロー — 楽観シナリオとの比較(万円)</h2>
         <ComposedChart width={1010} height={430} data={chartData}
           margin={{ top: 10, right: 20, left: 0, bottom: 4 }}>
-          <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
-          <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
-          <YAxis tick={{ fontSize: 12 }} width={64} />
+          <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
+          <XAxis dataKey="year" tick={{ fontSize: 12, fill: T.faint }} unit="年" />
+          <YAxis tick={{ fontSize: 12, fill: T.faint }} width={64} />
           <Legend wrapperStyle={{ fontSize: 13 }} />
-          <ReferenceLine y={0} stroke="#16222E" />
+          <ReferenceLine y={0} stroke={T.line2} />
           <Line type="monotone" dataKey="楽観" stroke={T.opt} strokeWidth={2.4} strokeDasharray="5 4" dot={false} />
           <Line type="monotone" dataKey="保守" stroke={T.scenario} strokeWidth={2.8} dot={false} />
         </ComposedChart>
@@ -962,12 +969,12 @@ function ReportView({ p, initialTitle, onClose }) {
         <h2>3. 単年キャッシュフローと年次明細(抜粋)</h2>
         <ComposedChart width={1010} height={300} data={chartData}
           margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
-          <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
-          <YAxis yAxisId="cf" tick={{ fontSize: 12 }} width={56} />
-          <YAxis yAxisId="bal" orientation="right" tick={{ fontSize: 12 }} width={64} />
+          <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
+          <XAxis dataKey="year" tick={{ fontSize: 12, fill: T.faint }} unit="年" />
+          <YAxis yAxisId="cf" tick={{ fontSize: 12, fill: T.faint }} width={56} />
+          <YAxis yAxisId="bal" orientation="right" tick={{ fontSize: 12, fill: T.faint }} width={64} />
           <Legend wrapperStyle={{ fontSize: 13 }} />
-          <ReferenceLine yAxisId="cf" y={0} stroke="#16222E" />
+          <ReferenceLine yAxisId="cf" y={0} stroke={T.line2} />
           <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
             {chartData.map((d, i) => <Cell key={i} fill={d["単年CF"] < 0 ? T.danger : T.scenario} />)}
           </Bar>
@@ -1006,7 +1013,7 @@ function ReportView({ p, initialTitle, onClose }) {
         <h3 style={{ marginTop: 22 }}>ストレステスト — 悪条件の複合に対する耐久性</h3>
         <div style={{ display: "flex", gap: 14 }}>
           {stress.map((s) => (
-            <div key={s.name} style={{ flex: 1, border: "1px solid " + (s.m.total >= 0 ? "#E2E8EF" : T.real),
+            <div key={s.name} style={{ flex: 1, border: "1px solid " + (s.m.total >= 0 ? T.line : T.real),
               borderRadius: 12, padding: "13px 16px",
               background: s.m.total >= 0 ? "#FBFCFD" : "rgba(179,64,46,.05)" }}>
               <div style={{ fontSize: 14, fontWeight: 800 }}>{s.name}</div>
@@ -1028,10 +1035,10 @@ function ReportView({ p, initialTitle, onClose }) {
         <h2>5. 出口戦略 — 売却タイミングの最適化(万円)</h2>
         <ComposedChart width={1010} height={400} data={exit}
           margin={{ top: 22, right: 20, left: 0, bottom: 4 }}>
-          <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
-          <XAxis dataKey="year" tick={{ fontSize: 12 }} unit="年" />
-          <YAxis tick={{ fontSize: 12 }} width={64} />
-          <ReferenceLine y={0} stroke="#16222E" />
+          <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
+          <XAxis dataKey="year" tick={{ fontSize: 12, fill: T.faint }} unit="年" />
+          <YAxis tick={{ fontSize: 12, fill: T.faint }} width={64} />
+          <ReferenceLine y={0} stroke={T.line2} />
           <Line type="monotone" dataKey="総合損益" stroke={T.blue} strokeWidth={3} dot={false} />
           {n.bestExit && <ReferenceLine x={n.bestExit.year} stroke={T.good} strokeDasharray="5 4"
             label={{ value: "最適: " + n.bestExit.year + "年目", fontSize: 13, fill: T.good, position: "top" }} />}
@@ -1102,7 +1109,7 @@ function CompareReportView({ rows, onClose }) {
         <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 保守シナリオ(売却込み)ベースの比較</div>
         <h3 style={{ marginTop: 34 }}>比較対象</h3>
         {rows.map((r, i) => (
-          <div key={r.pr.id} style={{ fontSize: 15, padding: "8px 0", borderBottom: "1px dashed #E2E8EF" }}>
+          <div key={r.pr.id} style={{ fontSize: 15, padding: "8px 0", borderBottom: `1px dashed ${T.line}` }}>
             {i + 1}. <b>{r.pr.name}</b>
             <span style={{ color: "#5B6B7A", fontSize: 13 }}>
               (価格 {r.pr.params.price.toLocaleString()}万円 ／ 保存日 {r.pr.savedAt.slice(0, 10)})</span>
@@ -1148,10 +1155,10 @@ function CompareReportView({ rows, onClose }) {
             <h3>最終損益(売却込み・万円)</h3>
             <ComposedChart width={492} height={380} data={barData}
               margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
-              <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-18} textAnchor="end" interval={0} />
-              <YAxis tick={{ fontSize: 12 }} width={64} />
-              <ReferenceLine y={0} stroke="#16222E" />
+              <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: T.faint }} angle={-18} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 12, fill: T.faint }} width={64} />
+              <ReferenceLine y={0} stroke={T.line2} />
               <Bar dataKey="総合損益" radius={[3, 3, 0, 0]}>
                 {barData.map((d, i) => <Cell key={i} fill={d.総合損益 < 0 ? T.real : T.blue} />)}
               </Bar>
@@ -1161,10 +1168,10 @@ function CompareReportView({ rows, onClose }) {
             <h3>IRR(%)</h3>
             <ComposedChart width={492} height={380} data={barData}
               margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
-              <CartesianGrid stroke="#E9EDF1" strokeDasharray="2 4" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-18} textAnchor="end" interval={0} />
-              <YAxis tick={{ fontSize: 12 }} width={48} />
-              <ReferenceLine y={0} stroke="#16222E" />
+              <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: T.faint }} angle={-18} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 12, fill: T.faint }} width={48} />
+              <ReferenceLine y={0} stroke={T.line2} />
               <Bar dataKey="IRR" radius={[3, 3, 0, 0]} fill={T.good} />
             </ComposedChart>
           </div>
@@ -1259,7 +1266,7 @@ function AccountModal({ open, onClose, user, profile }) {
         justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#FFF", borderRadius: 12, padding: 24, maxWidth: 440,
         width: "100%", maxHeight: "90vh", overflowY: "auto",
-        boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        boxShadow: T.sh3 }}>
         <h3 style={{ fontSize: 18, fontWeight: 800, color: T.navy, margin: 0 }}>アカウント設定</h3>
         <div style={{ fontSize: 12.5, color: T.sub, marginTop: 4 }}>
           {user.email} ／ 現在のプラン: <b>{profile && profile.plan === "pro" ? "Pro" : "Free"}</b>
@@ -1397,311 +1404,7 @@ function LoanLab({ p, actuals }) {
     const monthlyDiff = M - M3;
     const breakEven = monthlyDiff > 0 ? Math.ceil(cost / monthlyDiff) : null;
     return { M, pre, M3, savedRefi, monthlyDiff, breakEven };
-  }, [bal, rate, years, amt, ptype, nRate, nYears, costMan]);
-
-  const box = { flex: "1 1 340px", border: `1px solid ${T.line}`, borderRadius: 12,
-    padding: "14px 16px", background: "#FBFCFD" };
-  const h3 = { fontSize: 14.5, fontWeight: 800, color: T.navy, margin: "0 0 10px" };
-  const res = { fontSize: 13.5, lineHeight: 2, background: "rgba(45,125,210,.06)",
-    border: "1px solid rgba(45,125,210,.2)", borderRadius: 10, padding: "10px 14px",
-    marginTop: 10 };
-
-  return (
-    <section style={cardSt}>
-      <h2 style={h2St}>繰上返済・借り換えシミュレーター</h2>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
-        <Field label="現在の残債" value={bal} onChange={setBal} unit="万円" step={50} min={1} />
-        <Field label="現在の金利" value={rate} onChange={setRate} unit="%" step={0.05} min={0} />
-        <Field label="残り返済期間" value={years} onChange={setYears} unit="年" step={1} min={1} />
-        <button onClick={() => { const v = fromP(); setBal(v.bal); setRate(v.rate); setYears(v.years); }}
-          style={{ ...btnSt("#FFF"), color: T.navy, border: `1.5px solid ${T.navy}` }}>
-          物件条件から再取得</button>
-      </div>
-      {c && (
-        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 8 }}>
-          現在の毎月返済額: <b className="num">{Math.round(c.M).toLocaleString()}円</b>
-          (運用開始年 {actuals.startYear} からの経過で自動推定。実際の返済予定表があればその数字に直してください)
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
-        <div style={box}>
-          <h3 style={h3}>💰 繰上返済したら?</h3>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
-            <Field label="繰上額" value={amt} onChange={setAmt} unit="万円" step={10} min={1} />
-            <Select label="タイプ" value={ptype} onChange={setPtype}
-              options={[["shorten", "期間短縮型"], ["reduce", "返済額軽減型"]]} />
-          </div>
-          {c && (
-            <div style={res} className="num">
-              {ptype === "shorten" ? (
-                <>返済期間が <b style={{ color: T.good }}>{c.pre.months}ヶ月短縮</b>(約{(c.pre.months / 12).toFixed(1)}年)。
-                支払利息を <b style={{ color: T.good }}>約{fmtMan(c.pre.saved)}節約</b>できます。</>
-              ) : (
-                <>毎月の返済が <b style={{ color: T.good }}>{Math.round(c.pre.monthly).toLocaleString()}円軽減</b>。
-                支払利息を <b style={{ color: T.good }}>約{fmtMan(c.pre.saved)}節約</b>できます。</>
-              )}
-              <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4 }}>
-                ※ 手元資金が減るため、空室・修繕に備えた予備費(家賃6ヶ月分が目安)は残すのが安全です。
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={box}>
-          <h3 style={h3}>🔄 借り換えたら?</h3>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
-            <Field label="借換後の金利" value={nRate} onChange={setNRate} unit="%" step={0.05} min={0} />
-            <Field label="借換後の期間" value={nYears} onChange={setNYears} unit="年" step={1} min={1} />
-            <Field label="諸費用" value={costMan} onChange={setCostMan} unit="万円" step={5} min={0}
-              hint="事務手数料(借入額の2.2%が相場)+登記・印紙など" />
-          </div>
-          {c && (
-            <div style={res} className="num">
-              借換後の毎月返済: <b>{Math.round(c.M3).toLocaleString()}円</b>
-              ({c.monthlyDiff >= 0 ? "−" : "+"}{Math.abs(Math.round(c.monthlyDiff)).toLocaleString()}円/月)。
-              {c.savedRefi > 0 ? (
-                <> 諸費用込みで総支払を <b style={{ color: T.good }}>約{fmtMan(c.savedRefi)}削減</b>。
-                {c.breakEven && <>諸費用は <b>約{c.breakEven}ヶ月</b>で回収できます(損益分岐)。</>}</>
-              ) : (
-                <> この条件では諸費用が節約分を上回り、<b style={{ color: T.real }}>約{fmtMan(-c.savedRefi)}の持ち出し超過</b>です。
-                金利差0.5%pt以上・残期間10年以上が借り換えの一般的な目安です。</>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------- 設備・イベントカレンダー ----------
-function EventCalendar({ p, actuals, persist, extraEvents = [] }) {
-  const nowY = new Date().getFullYear(), nowM = new Date().getMonth() + 1;
-  const custom = actuals.events || [];
-  const [f, setF] = useState({
-    month: nowY + "-" + String(nowM).padStart(2, "0"), label: "", amount: "" });
-
-  const add = () => {
-    if (!f.label.trim()) return;
-    persist({ ...actuals, events: [...custom,
-      { id: Date.now(), month: f.month, label: f.label.trim(),
-        amount: Math.max(0, Number(f.amount) || 0) }] });
-    setF({ ...f, label: "", amount: "" });
-  };
-  const del = (id) => persist({ ...actuals, events: custom.filter((e) => e.id !== id) });
-
-  const months = useMemo(() => {
-    const out = [];
-    for (let k = 0; k < 12; k++) {
-      const d = new Date(nowY, nowM - 1 + k, 1);
-      const y = d.getFullYear(), m = d.getMonth() + 1;
-      const key = y + "-" + String(m).padStart(2, "0");
-      const evs = [];
-      if (p.tax > 0 && [4, 7, 12, 2].includes(m)) {
-        evs.push({ label: "固定資産税 第" + { 4: 1, 7: 2, 12: 3, 2: 4 }[m] + "期(目安)",
-          amount: Math.round(p.tax / 4), auto: true });
-      }
-      if (m === 2) evs.push({ label: "確定申告の準備(申告期間 2/16〜3/15)", amount: 0, auto: true });
-      if (m === 1) {
-        for (const eq of p.equipment) {
-          if (!eq.on || !eq.installYear) continue;
-          const next = eq.installYear + eq.cycle;
-          if (next === y) evs.push({ label: eq.name + " 交換目安(年内)",
-            amount: eq.cost * 10000, auto: true });
-        }
-      }
-      custom.filter((e) => e.month === key).forEach((e) => evs.push({ ...e, auto: false }));
-      extraEvents.filter((e) => e.month === key)
-        .forEach((e) => evs.push({ ...e, auto: true, auction: true }));
-      out.push({ key, y, m, evs });
-    }
-    return out;
-  }, [p, custom, extraEvents]);
-
-  const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
-    fontSize: 13, background: "#FBFCFD", color: T.ink };
-
-  return (
-    <section style={cardSt}>
-      <h2 style={h2St}>イベントカレンダー — 今後12ヶ月の支出・手続き予定</h2>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
-        marginBottom: 12 }}>
-        <input type="month" value={f.month}
-          onChange={(e) => setF({ ...f, month: e.target.value })} style={inSt} />
-        <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}
-          placeholder="予定を追加(例: 火災保険 更新)" style={{ ...inSt, flex: "1 1 200px" }}
-          onKeyDown={(e) => e.key === "Enter" && add()} />
-        <input type="number" value={f.amount} min={0}
-          onChange={(e) => setF({ ...f, amount: e.target.value })}
-          placeholder="金額(円・任意)" style={{ ...inSt, width: 130 }} />
-        <button onClick={add} style={btnSt(T.navy)}>+ 追加</button>
-      </div>
-      {months.map(({ key, y, m, evs }) => (
-        <div key={key} style={{ display: "flex", gap: 12, padding: "8px 0",
-          borderBottom: `1px dashed ${T.line}`, alignItems: "baseline" }}>
-          <div style={{ width: 86, fontSize: 13, fontWeight: 800, color: T.navy,
-            flexShrink: 0 }} className="num">{y}年{m}月</div>
-          <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {evs.length === 0
-              ? <span style={{ fontSize: 12, color: "#B7C1CB" }}>—</span>
-              : evs.map((e, i) => (
-                <span key={e.id || key + i} style={{ fontSize: 12, padding: "4px 12px",
-                  borderRadius: 12, display: "inline-flex", gap: 6, alignItems: "center",
-                  background: e.auction ? "rgba(218,145,0,.10)"
-                    : e.auto ? "rgba(45,125,210,.08)" : "rgba(43,184,163,.1)",
-                  border: e.auction ? "1px solid rgba(218,145,0,.35)"
-                    : e.auto ? "1px solid rgba(45,125,210,.25)" : "1px solid rgba(43,184,163,.35)",
-                  color: T.ink }} className="num">
-                  {e.label}{e.amount > 0 && <b>{e.amount.toLocaleString()}円</b>}
-                  {!e.auto && (
-                    <button onClick={() => del(e.id)} style={{ border: "none",
-                      background: "none", color: T.sub, cursor: "pointer", padding: 0,
-                      fontSize: 13, lineHeight: 1 }}>×</button>)}
-                </span>))}
-          </div>
-        </div>
-      ))}
-      <div style={{ fontSize: 11.5, color: T.sub, marginTop: 10 }}>
-        青いチップは物件パラメータからの自動生成、琥珀のチップはフォロー中の競売日程です
-        (固定資産税の納期は自治体により異なります。目安として一般的な4期を表示)。
-        緑のチップは手動追加の予定です。設備の交換年は下ではなく上の設備台帳の設置年から計算しています。
-      </div>
-    </section>
-  );
-}
-
-// ---------- 検討候補トレイ(物件探し期の日常メモ) ----------
-const LEAD_STATUSES = ["気になる", "検討中", "内見予定", "見送り"];
-
-function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
-  const [f, setF] = useState({ name: "", url: "", price: "", rent: "", memo: "" });
-  const [msg, setMsg] = useState("");
-  const cap = isPro ? 50 : 5;
-
-  const add = async () => {
-    if (!f.name.trim()) { setMsg("物件名(または駅名などの目印)を入力してください"); return; }
-    const r = await onAdd({
-      name: f.name.trim(), url: f.url.trim(),
-      price: Math.max(0, Number(f.price) || 0),
-      rent: Math.max(0, Number(f.rent) || 0),
-      memo: f.memo.trim(),
-    });
-    if (!r.ok) { setMsg(r.msg); return; }
-    setF({ name: "", url: "", price: "", rent: "", memo: "" });
-    setMsg("");
-  };
-
-  const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
-    fontSize: 13, background: "#FBFCFD", color: T.ink, width: "100%" };
-
-  return (
-    <section style={cardSt}>
-      <h2 style={h2St}>検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
-      <LeadIntake onAdd={onAdd} />
-      <div style={{ display: "grid", gap: 8,
-        gridTemplateColumns: "1.4fr 1.6fr 0.8fr 0.9fr", alignItems: "end" }}>
-        <label style={{ fontSize: 11.5, color: T.sub }}>物件名・目印*
-          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="例: 文京区 白山 1K 3階" style={inSt} /></label>
-        <label style={{ fontSize: 11.5, color: T.sub }}>URL(任意)
-          <input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })}
-            placeholder="ポータルの物件ページURL" style={inSt} /></label>
-        <label style={{ fontSize: 11.5, color: T.sub }}>価格(万円)
-          <input type="number" value={f.price} min={0}
-            onChange={(e) => setF({ ...f, price: e.target.value })} style={inSt} /></label>
-        <label style={{ fontSize: 11.5, color: T.sub }}>想定家賃(円/月)
-          <input type="number" value={f.rent} min={0}
-            onChange={(e) => setF({ ...f, rent: e.target.value })} style={inSt} /></label>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-        <input value={f.memo} onChange={(e) => setF({ ...f, memo: e.target.value })}
-          placeholder="メモ(任意): 駅徒歩5分、南向き、管理費1.2万 など"
-          style={{ ...inSt, flex: 1 }}
-          onKeyDown={(e) => e.key === "Enter" && add()} />
-        <button onClick={add} style={btnSt(T.navy)}>+ 追加</button>
-      </div>
-      {msg && <div style={{ fontSize: 12, color: T.real, marginTop: 6 }}>{msg}</div>}
-
-      {leads.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 14, lineHeight: 1.9 }}>
-          ポータルサイトで気になった物件を、ここにストックしておけます。
-          価格と家賃を入れておくと表面利回りが自動計算され、「診断する」で
-          そのままシミュレーションに流せます。
-        </div>
-      ) : (
-        <div style={{ marginTop: 14 }}>
-          {leads.map((l) => {
-            const gross = l.price > 0 && l.rent > 0
-              ? ((l.rent * 12) / (l.price * 10000)) * 100 : null;
-            const dim = l.status === "見送り";
-            return (
-              <div key={l.id} style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px",
-                alignItems: "center", padding: "10px 0",
-                borderBottom: `1px dashed ${T.line}`, opacity: dim ? 0.45 : 1 }}>
-                <div style={{ flex: "2 1 220px", minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {l.url
-                      ? <a href={l.url} target="_blank" rel="noreferrer"
-                          style={{ color: T.blue }}>{l.name} ↗</a>
-                      : l.name}
-                  </div>
-                  {l.memo && <div style={{ fontSize: 11.5, color: T.sub, overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.memo}</div>}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6,
-                  flex: "1 1 250px", flexWrap: "wrap" }} className="num">
-                  <label style={{ fontSize: 10.5, color: T.sub }}>価格
-                    <input type="number" min={0} defaultValue={l.price || ""}
-                      aria-label={l.name + "の価格（万円）"}
-                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                      onBlur={(e) => onUpdate(l.id,
-                        { price: Math.max(0, Number(e.target.value) || 0) })}
-                      style={{ ...inSt, width: 82, marginLeft: 3, padding: "5px 6px" }} />
-                  </label>
-                  <span style={{ fontSize: 11, color: T.sub }}>万円</span>
-                  <label style={{ fontSize: 10.5, color: T.sub }}>家賃
-                    <input type="number" min={0} defaultValue={l.rent || ""}
-                      aria-label={l.name + "の家賃（円）"}
-                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                      onBlur={(e) => onUpdate(l.id,
-                        { rent: Math.max(0, Number(e.target.value) || 0) })}
-                      style={{ ...inSt, width: 92, marginLeft: 3, padding: "5px 6px" }} />
-                  </label>
-                  <span style={{ fontSize: 11, color: T.sub }}>円</span>
-                  {gross != null && (
-                    <span style={{ fontSize: 12, fontWeight: 700,
-                      color: gross < 4 ? T.real : gross < 5.5 ? T.warnInk : T.good }}>
-                      表面{gross.toFixed(2)}%</span>)}
-                </div>
-                <select value={l.status || "気になる"}
-                  onChange={(e) => onUpdate(l.id, { status: e.target.value })}
-                  style={{ padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8,
-                    fontSize: 12, background: "#FFF", color: T.ink }}>
-                  {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <button onClick={() => onSimulate(l)}
-                  disabled={!(l.price > 0 && l.rent > 0)}
-                  title={l.price > 0 && l.rent > 0 ? "" : "価格と家賃を入力すると診断できます"}
-                  style={{ ...btnSt(T.blue), opacity: l.price > 0 && l.rent > 0 ? 1 : 0.4 }}>
-                  診断する →</button>
-                <button onClick={() => onDelete(l.id)}
-                  style={{ padding: "6px 10px", background: "none",
-                    border: `1px solid ${T.line}`, color: T.sub, borderRadius: 8,
-                    fontSize: 12, cursor: "pointer" }}>削除</button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab, leads, onAddLead, onUpdateLead, onDeleteLead, onSimulateLead }) {
-  const now = new Date();
-  const nowY = now.getFullYear(), nowM = now.getMonth() + 1;
+  }, [bal, rat…4248 tokens truncated…w.getMonth() + 1;
   const monthsFrom = (ym) => {
     if (!ym) return 0;
     const [y, m] = ym.split("-").map(Number);
@@ -1864,10 +1567,10 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={track} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: T.sub }} />
-                <YAxis tick={{ fontSize: 11, fill: T.sub }} width={56} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: T.faint }} />
+                <YAxis tick={{ fontSize: 11, fill: T.faint }} width={56} />
                 <Tooltip formatter={(v) => v.toLocaleString() + "万円"} />
-                <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
+                <ReferenceLine y={0} stroke={T.line2} strokeWidth={1} />
                 <Line type="monotone" dataKey="純資産" stroke={T.teal} strokeWidth={2.5} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
@@ -1890,7 +1593,7 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
         {isPro ? (
           review.text ? (
             <p style={{ fontSize: 14, lineHeight: 2.1, margin: 0,
-              background: "rgba(45,125,210,.06)", border: "1px solid rgba(45,125,210,.2)",
+              background: "rgba(30,62,107,.06)", border: "1px solid rgba(30,62,107,.2)",
               borderRadius: 12, padding: "14px 18px" }}>{review.text}</p>
           ) : (
             <div style={{ textAlign: "center", padding: "28px 16px" }}>
@@ -1980,7 +1683,7 @@ function PasswordResetModal({ open, onClose }) {
       background: "rgba(22,34,46,0.55)", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#FFF", borderRadius: 12, padding: 24, maxWidth: 400,
-        width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        width: "100%", boxShadow: T.sh3 }}>
         <h3 style={{ fontSize: 17, fontWeight: 800, color: T.navy, margin: "0 0 12px" }}>
           新しいパスワードを設定</h3>
         {done ? (
@@ -2093,7 +1796,7 @@ function AuthModal({ open, onClose }) {
         justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#FFF", borderRadius: 12,
         padding: 24, maxWidth: 400, width: "100%", maxHeight: "90vh", overflowY: "auto",
-        boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        boxShadow: T.sh3 }}>
         <YomuLock size={56} vertical style={{ margin: "0 auto 18px" }} />
         <div style={{ display: "flex", gap: 0, marginBottom: 16, border: `1px solid ${T.line}`,
           borderRadius: 8, overflow: "hidden" }}>
@@ -2203,7 +1906,7 @@ function UpgradeModal({ open, onClose, onUnlocked, authed, email, onRefresh }) {
       justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#FFF", borderRadius: 12,
         padding: 24, maxWidth: 440, width: "100%", maxHeight: "90vh", overflowY: "auto",
-        boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        boxShadow: T.sh3 }}>
         <h3 style={{ fontSize: 18, fontWeight: 800, color: T.navy, margin: "0 0 4px" }}>
           Proプランで全機能を開放</h3>
         <p style={{ fontSize: 12.5, color: T.sub, margin: "0 0 12px", lineHeight: 1.7 }}>
@@ -2626,7 +2329,7 @@ export default function App() {
         <div role="status" style={{ position: "fixed", top: 16, right: 16, zIndex: 1200,
           maxWidth: 360, padding: "11px 14px", borderRadius: 10, color: "#FFF",
           background: leadToast.ok ? T.good : T.real,
-          boxShadow: "0 10px 28px rgba(16,32,46,.22)", fontSize: 12.5,
+          boxShadow: T.sh2, fontSize: 12.5,
           lineHeight: 1.6, fontWeight: 700 }}>
           {leadToast.msg}
         </div>
@@ -2688,11 +2391,11 @@ export default function App() {
             ["auc", "競売", isPro]]
             .map(([k, l, ok]) => (
             <button key={k} onClick={() => (ok ? setTab(k) : setUpgradeOpen(true))} style={{
-              padding: "8px 16px", borderRadius: 18, fontSize: 13, fontWeight: 700,
+              padding: "8px 16px", borderRadius: T.pill, fontSize: 13, fontWeight: 700,
               cursor: "pointer",
               border: tab === k ? "1px solid transparent" : `1px solid ${T.line}`,
               background: tab === k ? T.grad : T.card,
-              boxShadow: tab === k ? "0 6px 18px rgba(45,125,210,.28)" : "none",
+              boxShadow: tab === k ? T.sh1 : "none",
               color: tab === k ? "#FFF" : ok ? T.ink : T.sub }}>{ok ? l : "\uD83D\uDD12 " + l}</button>
           ))}
         </nav>
@@ -2716,7 +2419,7 @@ export default function App() {
         {/* モード切替 */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12,
           flexWrap: "wrap" }}>
-          <div style={{ display: "flex", border: `1px solid ${T.line}`, borderRadius: 8,
+          <div style={{ display: "flex", border: `1px solid ${T.line}`, borderRadius: T.rS,
             overflow: "hidden" }}>
             {[["easy", "かんたん"], ["pro", "詳細"]].map(([k, l]) => (
               <button key={k} onClick={() => switchMode(k)} style={{ padding: "7px 18px",
@@ -2760,7 +2463,7 @@ export default function App() {
         )}
 
         {/* AI market data */}
-        <section style={{ background: T.aiBg, border: "1px solid rgba(43,184,163,.35)", borderRadius: 10,
+        <section style={{ background: T.aiBg, border: `1px solid ${T.aiLine}`, borderRadius: 10,
           padding: 16, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.aiInk, margin: "0 0 10px" }}>
             AI市場データ取得(ウェブ検索) — 家賃・金利から礼金/AD/管理料の商習慣、期待利回りまで13項目を自動反映
@@ -2811,7 +2514,7 @@ export default function App() {
         </section>
 
         {/* 保存済みリサーチライブラリ */}
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: T.r, boxShadow: T.sh1,
           padding: 16, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 4px",
             display: "flex", justifyContent: "space-between" }}>
@@ -2873,7 +2576,7 @@ export default function App() {
         </div>
 
         {/* KPI */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
           <Kpi label={`累積CF ${p.simYears}年(保守${p.taxOn ? "・税引後" : ""})`}
                value={fmtMan(last.cum)} color={last.cum < 0 ? T.real : T.good} />
           <Kpi label={`累積CF ${p.simYears}年(楽観)`} value={fmtMan(lastOpt.cum)} color={T.opt} />
@@ -2894,19 +2597,19 @@ export default function App() {
         </div>
 
         {/* charts */}
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: T.r, boxShadow: T.sh1,
           padding: "14px 8px 4px", marginBottom: 12 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 8px 8px" }}>
+          <h2 style={{ ...h2St, margin: "0 8px 8px" }}>
             累積キャッシュフロー — 楽観と保守のギャップ(万円)
           </h2>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
-              <XAxis dataKey="year" tick={{ fontSize: 11, fill: T.sub }} unit="年" />
-              <YAxis tick={{ fontSize: 11, fill: T.sub }} width={52} />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: T.faint }} unit="年" />
+              <YAxis tick={{ fontSize: 11, fill: T.faint }} width={52} />
               <Tooltip formatter={(v) => v.toLocaleString() + "万円"} labelFormatter={(l) => l + "年目"} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine y={0} stroke={T.ink} strokeWidth={1} />
+              <ReferenceLine y={0} stroke={T.line2} strokeWidth={1} />
               <Area type="monotone" dataKey="楽観累積" stroke="none" fill={T.optSoft}
                     activeDot={false} legendType="none" tooltipType="none" />
               <Line type="monotone" dataKey="楽観累積" stroke={T.opt} strokeWidth={2.4}
@@ -2916,20 +2619,20 @@ export default function App() {
           </ResponsiveContainer>
         </section>
 
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: T.r, boxShadow: T.sh1,
           padding: "14px 8px 4px", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 8px 8px" }}>
+          <h2 style={{ ...h2St, margin: "0 8px 8px" }}>
             単年キャッシュフロー(保守)とローン残債(万円)
           </h2>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
-              <XAxis dataKey="year" tick={{ fontSize: 11, fill: T.sub }} unit="年" />
-              <YAxis yAxisId="cf" tick={{ fontSize: 11, fill: T.sub }} width={52} />
-              <YAxis yAxisId="bal" orientation="right" tick={{ fontSize: 11, fill: T.sub }} width={56} />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: T.faint }} unit="年" />
+              <YAxis yAxisId="cf" tick={{ fontSize: 11, fill: T.faint }} width={52} />
+              <YAxis yAxisId="bal" orientation="right" tick={{ fontSize: 11, fill: T.faint }} width={56} />
               <Tooltip formatter={(v) => v.toLocaleString() + "万円"} labelFormatter={(l) => l + "年目"} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine yAxisId="cf" y={0} stroke={T.ink} strokeWidth={1} />
+              <ReferenceLine yAxisId="cf" y={0} stroke={T.line2} strokeWidth={1} />
               <Bar yAxisId="cf" dataKey="単年CF" radius={[2, 2, 0, 0]}>
                 {chartData.map((d, i) => (
                   <Cell key={i} fill={d["単年CF"] < 0 ? T.danger : T.scenario} />
@@ -2944,7 +2647,7 @@ export default function App() {
         {/* 詳細モード限定: 年次明細・全パラメータ */}
         {mode === "pro" && (<>
         {/* yearly table */}
-        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
+        <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: T.r, boxShadow: T.sh1,
           padding: 16, marginBottom: 16 }}>
           <h2 onClick={() => setShowTable(!showTable)} style={{ fontSize: 13, fontWeight: 700,
             color: T.navy, margin: 0, cursor: "pointer",
@@ -3042,12 +2745,15 @@ export default function App() {
           <Field label="大規模修繕の費用" value={p.bigRepairCost} onChange={set("bigRepairCost")} unit="万円/回" step={10} min={0} />
         </Section>
 
-        <section style={{ background: T.card, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)", padding: 16,
+        <section style={{ background: T.card, borderRadius: T.r, boxShadow: T.sh1, padding: 22,
           border: `1px solid ${T.line}`, marginBottom: 12 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 12px",
-            letterSpacing: "0.06em", borderBottom: `3px solid ${T.blue}`, paddingBottom: 6,
-            display: "flex", justifyContent: "space-between" }}>
-            <span>設備交換サイクル(大家負担)</span><span style={{ color: T.sub, fontWeight: 400 }}>07</span>
+          <h2 style={{ fontSize: 17, fontWeight: 700, fontFamily: T.serif,
+            color: T.navy, margin: "0 0 16px", letterSpacing: "0.01em",
+            borderBottom: `1px solid ${T.line}`, paddingBottom: 10,
+            display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+            <span>設備交換サイクル(大家負担)</span>
+            <span style={{ fontFamily: T.mono, fontSize: 11, letterSpacing: ".14em",
+              color: T.gold, fontWeight: 700 }}>07</span>
           </h2>
           {p.equipment.map((eq, i) => (
             <div key={i} style={{ display: "grid",

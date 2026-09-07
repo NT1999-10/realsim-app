@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 44248)
-Total output lines: 3151
-
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid,
@@ -1404,7 +1401,311 @@ function LoanLab({ p, actuals }) {
     const monthlyDiff = M - M3;
     const breakEven = monthlyDiff > 0 ? Math.ceil(cost / monthlyDiff) : null;
     return { M, pre, M3, savedRefi, monthlyDiff, breakEven };
-  }, [bal, rat…4248 tokens truncated…w.getMonth() + 1;
+  }, [bal, rate, years, amt, ptype, nRate, nYears, costMan]);
+
+  const box = { flex: "1 1 340px", border: `1px solid ${T.line}`, borderRadius: 12,
+    padding: "14px 16px", background: "#FBFCFD" };
+  const h3 = { fontSize: 14.5, fontWeight: 800, color: T.navy, margin: "0 0 10px" };
+  const res = { fontSize: 13.5, lineHeight: 2, background: "rgba(30,62,107,.06)",
+    border: "1px solid rgba(30,62,107,.2)", borderRadius: 10, padding: "10px 14px",
+    marginTop: 10 };
+
+  return (
+    <section style={cardSt}>
+      <h2 style={h2St}>繰上返済・借り換えシミュレーター</h2>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+        <Field label="現在の残債" value={bal} onChange={setBal} unit="万円" step={50} min={1} />
+        <Field label="現在の金利" value={rate} onChange={setRate} unit="%" step={0.05} min={0} />
+        <Field label="残り返済期間" value={years} onChange={setYears} unit="年" step={1} min={1} />
+        <button onClick={() => { const v = fromP(); setBal(v.bal); setRate(v.rate); setYears(v.years); }}
+          style={{ ...btnSt("#FFF"), color: T.navy, border: `1.5px solid ${T.navy}` }}>
+          物件条件から再取得</button>
+      </div>
+      {c && (
+        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 8 }}>
+          現在の毎月返済額: <b className="num">{Math.round(c.M).toLocaleString()}円</b>
+          (運用開始年 {actuals.startYear} からの経過で自動推定。実際の返済予定表があればその数字に直してください)
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
+        <div style={box}>
+          <h3 style={h3}>💰 繰上返済したら?</h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            <Field label="繰上額" value={amt} onChange={setAmt} unit="万円" step={10} min={1} />
+            <Select label="タイプ" value={ptype} onChange={setPtype}
+              options={[["shorten", "期間短縮型"], ["reduce", "返済額軽減型"]]} />
+          </div>
+          {c && (
+            <div style={res} className="num">
+              {ptype === "shorten" ? (
+                <>返済期間が <b style={{ color: T.good }}>{c.pre.months}ヶ月短縮</b>(約{(c.pre.months / 12).toFixed(1)}年)。
+                支払利息を <b style={{ color: T.good }}>約{fmtMan(c.pre.saved)}節約</b>できます。</>
+              ) : (
+                <>毎月の返済が <b style={{ color: T.good }}>{Math.round(c.pre.monthly).toLocaleString()}円軽減</b>。
+                支払利息を <b style={{ color: T.good }}>約{fmtMan(c.pre.saved)}節約</b>できます。</>
+              )}
+              <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4 }}>
+                ※ 手元資金が減るため、空室・修繕に備えた予備費(家賃6ヶ月分が目安)は残すのが安全です。
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={box}>
+          <h3 style={h3}>🔄 借り換えたら?</h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            <Field label="借換後の金利" value={nRate} onChange={setNRate} unit="%" step={0.05} min={0} />
+            <Field label="借換後の期間" value={nYears} onChange={setNYears} unit="年" step={1} min={1} />
+            <Field label="諸費用" value={costMan} onChange={setCostMan} unit="万円" step={5} min={0}
+              hint="事務手数料(借入額の2.2%が相場)+登記・印紙など" />
+          </div>
+          {c && (
+            <div style={res} className="num">
+              借換後の毎月返済: <b>{Math.round(c.M3).toLocaleString()}円</b>
+              ({c.monthlyDiff >= 0 ? "−" : "+"}{Math.abs(Math.round(c.monthlyDiff)).toLocaleString()}円/月)。
+              {c.savedRefi > 0 ? (
+                <> 諸費用込みで総支払を <b style={{ color: T.good }}>約{fmtMan(c.savedRefi)}削減</b>。
+                {c.breakEven && <>諸費用は <b>約{c.breakEven}ヶ月</b>で回収できます(損益分岐)。</>}</>
+              ) : (
+                <> この条件では諸費用が節約分を上回り、<b style={{ color: T.real }}>約{fmtMan(-c.savedRefi)}の持ち出し超過</b>です。
+                金利差0.5%pt以上・残期間10年以上が借り換えの一般的な目安です。</>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------- 設備・イベントカレンダー ----------
+function EventCalendar({ p, actuals, persist, extraEvents = [] }) {
+  const nowY = new Date().getFullYear(), nowM = new Date().getMonth() + 1;
+  const custom = actuals.events || [];
+  const [f, setF] = useState({
+    month: nowY + "-" + String(nowM).padStart(2, "0"), label: "", amount: "" });
+
+  const add = () => {
+    if (!f.label.trim()) return;
+    persist({ ...actuals, events: [...custom,
+      { id: Date.now(), month: f.month, label: f.label.trim(),
+        amount: Math.max(0, Number(f.amount) || 0) }] });
+    setF({ ...f, label: "", amount: "" });
+  };
+  const del = (id) => persist({ ...actuals, events: custom.filter((e) => e.id !== id) });
+
+  const months = useMemo(() => {
+    const out = [];
+    for (let k = 0; k < 12; k++) {
+      const d = new Date(nowY, nowM - 1 + k, 1);
+      const y = d.getFullYear(), m = d.getMonth() + 1;
+      const key = y + "-" + String(m).padStart(2, "0");
+      const evs = [];
+      if (p.tax > 0 && [4, 7, 12, 2].includes(m)) {
+        evs.push({ label: "固定資産税 第" + { 4: 1, 7: 2, 12: 3, 2: 4 }[m] + "期(目安)",
+          amount: Math.round(p.tax / 4), auto: true });
+      }
+      if (m === 2) evs.push({ label: "確定申告の準備(申告期間 2/16〜3/15)", amount: 0, auto: true });
+      if (m === 1) {
+        for (const eq of p.equipment) {
+          if (!eq.on || !eq.installYear) continue;
+          const next = eq.installYear + eq.cycle;
+          if (next === y) evs.push({ label: eq.name + " 交換目安(年内)",
+            amount: eq.cost * 10000, auto: true });
+        }
+      }
+      custom.filter((e) => e.month === key).forEach((e) => evs.push({ ...e, auto: false }));
+      extraEvents.filter((e) => e.month === key)
+        .forEach((e) => evs.push({ ...e, auto: true, auction: true }));
+      out.push({ key, y, m, evs });
+    }
+    return out;
+  }, [p, custom, extraEvents]);
+
+  const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
+    fontSize: 13, background: "#FBFCFD", color: T.ink };
+
+  return (
+    <section style={cardSt}>
+      <h2 style={h2St}>イベントカレンダー — 今後12ヶ月の支出・手続き予定</h2>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
+        marginBottom: 12 }}>
+        <input type="month" value={f.month}
+          onChange={(e) => setF({ ...f, month: e.target.value })} style={inSt} />
+        <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}
+          placeholder="予定を追加(例: 火災保険 更新)" style={{ ...inSt, flex: "1 1 200px" }}
+          onKeyDown={(e) => e.key === "Enter" && add()} />
+        <input type="number" value={f.amount} min={0}
+          onChange={(e) => setF({ ...f, amount: e.target.value })}
+          placeholder="金額(円・任意)" style={{ ...inSt, width: 130 }} />
+        <button onClick={add} style={btnSt(T.navy)}>+ 追加</button>
+      </div>
+      {months.map(({ key, y, m, evs }) => (
+        <div key={key} style={{ display: "flex", gap: 12, padding: "8px 0",
+          borderBottom: `1px dashed ${T.line}`, alignItems: "baseline" }}>
+          <div style={{ width: 86, fontSize: 13, fontWeight: 800, color: T.navy,
+            flexShrink: 0 }} className="num">{y}年{m}月</div>
+          <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {evs.length === 0
+              ? <span style={{ fontSize: 12, color: "#B7C1CB" }}>—</span>
+              : evs.map((e, i) => (
+                <span key={e.id || key + i} style={{ fontSize: 12, padding: "4px 12px",
+                  borderRadius: 12, display: "inline-flex", gap: 6, alignItems: "center",
+                  background: e.auction ? "rgba(218,145,0,.10)"
+                    : e.auto ? "rgba(30,62,107,.08)" : "rgba(74,116,171,.1)",
+                  border: e.auction ? "1px solid rgba(218,145,0,.35)"
+                    : e.auto ? "1px solid rgba(30,62,107,.25)" : "1px solid rgba(74,116,171,.35)",
+                  color: T.ink }} className="num">
+                  {e.label}{e.amount > 0 && <b>{e.amount.toLocaleString()}円</b>}
+                  {!e.auto && (
+                    <button onClick={() => del(e.id)} style={{ border: "none",
+                      background: "none", color: T.sub, cursor: "pointer", padding: 0,
+                      fontSize: 13, lineHeight: 1 }}>×</button>)}
+                </span>))}
+          </div>
+        </div>
+      ))}
+      <div style={{ fontSize: 11.5, color: T.sub, marginTop: 10 }}>
+        青いチップは物件パラメータからの自動生成、琥珀のチップはフォロー中の競売日程です
+        (固定資産税の納期は自治体により異なります。目安として一般的な4期を表示)。
+        緑のチップは手動追加の予定です。設備の交換年は下ではなく上の設備台帳の設置年から計算しています。
+      </div>
+    </section>
+  );
+}
+
+// ---------- 検討候補トレイ(物件探し期の日常メモ) ----------
+const LEAD_STATUSES = ["気になる", "検討中", "内見予定", "見送り"];
+
+function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
+  const [f, setF] = useState({ name: "", url: "", price: "", rent: "", memo: "" });
+  const [msg, setMsg] = useState("");
+  const cap = isPro ? 50 : 5;
+
+  const add = async () => {
+    if (!f.name.trim()) { setMsg("物件名(または駅名などの目印)を入力してください"); return; }
+    const r = await onAdd({
+      name: f.name.trim(), url: f.url.trim(),
+      price: Math.max(0, Number(f.price) || 0),
+      rent: Math.max(0, Number(f.rent) || 0),
+      memo: f.memo.trim(),
+    });
+    if (!r.ok) { setMsg(r.msg); return; }
+    setF({ name: "", url: "", price: "", rent: "", memo: "" });
+    setMsg("");
+  };
+
+  const inSt = { padding: "8px 10px", border: `1px solid ${T.line}`, borderRadius: 8,
+    fontSize: 13, background: "#FBFCFD", color: T.ink, width: "100%" };
+
+  return (
+    <section style={cardSt}>
+      <h2 style={h2St}>検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
+      <LeadIntake onAdd={onAdd} />
+      <div style={{ display: "grid", gap: 8,
+        gridTemplateColumns: "1.4fr 1.6fr 0.8fr 0.9fr", alignItems: "end" }}>
+        <label style={{ fontSize: 11.5, color: T.sub }}>物件名・目印*
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="例: 文京区 白山 1K 3階" style={inSt} /></label>
+        <label style={{ fontSize: 11.5, color: T.sub }}>URL(任意)
+          <input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })}
+            placeholder="ポータルの物件ページURL" style={inSt} /></label>
+        <label style={{ fontSize: 11.5, color: T.sub }}>価格(万円)
+          <input type="number" value={f.price} min={0}
+            onChange={(e) => setF({ ...f, price: e.target.value })} style={inSt} /></label>
+        <label style={{ fontSize: 11.5, color: T.sub }}>想定家賃(円/月)
+          <input type="number" value={f.rent} min={0}
+            onChange={(e) => setF({ ...f, rent: e.target.value })} style={inSt} /></label>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+        <input value={f.memo} onChange={(e) => setF({ ...f, memo: e.target.value })}
+          placeholder="メモ(任意): 駅徒歩5分、南向き、管理費1.2万 など"
+          style={{ ...inSt, flex: 1 }}
+          onKeyDown={(e) => e.key === "Enter" && add()} />
+        <button onClick={add} style={btnSt(T.navy)}>+ 追加</button>
+      </div>
+      {msg && <div style={{ fontSize: 12, color: T.real, marginTop: 6 }}>{msg}</div>}
+
+      {leads.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 14, lineHeight: 1.9 }}>
+          ポータルサイトで気になった物件を、ここにストックしておけます。
+          価格と家賃を入れておくと表面利回りが自動計算され、「診断する」で
+          そのままシミュレーションに流せます。
+        </div>
+      ) : (
+        <div style={{ marginTop: 14 }}>
+          {leads.map((l) => {
+            const gross = l.price > 0 && l.rent > 0
+              ? ((l.rent * 12) / (l.price * 10000)) * 100 : null;
+            const dim = l.status === "見送り";
+            return (
+              <div key={l.id} style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px",
+                alignItems: "center", padding: "10px 0",
+                borderBottom: `1px dashed ${T.line}`, opacity: dim ? 0.45 : 1 }}>
+                <div style={{ flex: "2 1 220px", minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {l.url
+                      ? <a href={l.url} target="_blank" rel="noreferrer"
+                          style={{ color: T.blue }}>{l.name} ↗</a>
+                      : l.name}
+                  </div>
+                  {l.memo && <div style={{ fontSize: 11.5, color: T.sub, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.memo}</div>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6,
+                  flex: "1 1 250px", flexWrap: "wrap" }} className="num">
+                  <label style={{ fontSize: 10.5, color: T.sub }}>価格
+                    <input type="number" min={0} defaultValue={l.price || ""}
+                      aria-label={l.name + "の価格（万円）"}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      onBlur={(e) => onUpdate(l.id,
+                        { price: Math.max(0, Number(e.target.value) || 0) })}
+                      style={{ ...inSt, width: 82, marginLeft: 3, padding: "5px 6px" }} />
+                  </label>
+                  <span style={{ fontSize: 11, color: T.sub }}>万円</span>
+                  <label style={{ fontSize: 10.5, color: T.sub }}>家賃
+                    <input type="number" min={0} defaultValue={l.rent || ""}
+                      aria-label={l.name + "の家賃（円）"}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      onBlur={(e) => onUpdate(l.id,
+                        { rent: Math.max(0, Number(e.target.value) || 0) })}
+                      style={{ ...inSt, width: 92, marginLeft: 3, padding: "5px 6px" }} />
+                  </label>
+                  <span style={{ fontSize: 11, color: T.sub }}>円</span>
+                  {gross != null && (
+                    <span style={{ fontSize: 12, fontWeight: 700,
+                      color: gross < 4 ? T.real : gross < 5.5 ? T.warnInk : T.good }}>
+                      表面{gross.toFixed(2)}%</span>)}
+                </div>
+                <select value={l.status || "気になる"}
+                  onChange={(e) => onUpdate(l.id, { status: e.target.value })}
+                  style={{ padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8,
+                    fontSize: 12, background: "#FFF", color: T.ink }}>
+                  {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button onClick={() => onSimulate(l)}
+                  disabled={!(l.price > 0 && l.rent > 0)}
+                  title={l.price > 0 && l.rent > 0 ? "" : "価格と家賃を入力すると診断できます"}
+                  style={{ ...btnSt(T.blue), opacity: l.price > 0 && l.rent > 0 ? 1 : 0.4 }}>
+                  診断する →</button>
+                <button onClick={() => onDelete(l.id)}
+                  style={{ padding: "6px 10px", background: "none",
+                    border: `1px solid ${T.line}`, color: T.sub, borderRadius: 8,
+                    fontSize: 12, cursor: "pointer" }}>削除</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab, leads, onAddLead, onUpdateLead, onDeleteLead, onSimulateLead }) {
+  const now = new Date();
+  const nowY = now.getFullYear(), nowM = now.getMonth() + 1;
   const monthsFrom = (ym) => {
     if (!ym) return 0;
     const [y, m] = ym.split("-").map(Number);

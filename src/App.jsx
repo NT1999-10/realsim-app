@@ -12,6 +12,7 @@ import SashineLab from "./features/sashine.jsx";
 import SoubaCheck from "./features/souba.jsx";
 import AuctionTab, { followRecord } from "./features/auction.jsx";
 import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
+import { YomuWordmark, YomuMark, YomuLock } from "./logo.jsx";
 
 
 
@@ -210,8 +211,12 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
           </div>
         )}
         {rows.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: T.sub }}>
-            まだ保存された物件がありません。シミュレーションタブで条件を作り、上のフォームで保存すると比較表に並びます。
+          <div style={{ textAlign: "center", padding: "28px 16px" }}>
+            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
+            <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
+              まだ保存された物件がありません。<br />
+              シミュレーションタブで条件を作り、上のフォームから比較対象を追加してください。
+            </div>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -694,7 +699,7 @@ function diagnose(q, m) {
   if (q.restorationCost < 50000) optimistic.push("原状回復費5万円未満は単身物件でも楽観的です");
   if (q.rateSlope <= 0) optimistic.push("金利上昇を見込んでいません。変動金利なら上昇シナリオの確認を");
   if (q.stayYears > 8) optimistic.push("平均入居8年超はファミリー向けでも長めの前提です");
-  if (q.repairBase < 10000) optimistic.push("経常修繕費が年1万円未満 — 築年が進むと現実的ではありません");
+  if (q.repairBase < 10000) optimistic.push("経常修繕費が年1万円未満 — 築年が進むと妥当ではありません");
 
   const level = dangers.length ? "danger"
     : (warns.length || optimistic.length >= 2) ? "warn" : "ok";
@@ -811,7 +816,7 @@ function buildNarrative(p, m, diag, exit, optLast) {
       : `単年キャッシュフローは全保有期間を通じて黒字を維持する試算であり、運営費・返済・税負担を賃料収入で吸収できる収益構造である。`) +
     (gap >= 0
       ? ` なお、満室・金利固定を仮定した楽観シナリオとの累積差額は${p.simYears}年間で約${fmtMan(gap)}にのぼり、簡易シミュレーションのみに依拠した判断には注意を要する。`
-      : ` 更新料・礼金収入の寄与により、現実シナリオが楽観シナリオを約${fmtMan(-gap)}上回る点は、本物件の収益構造上の強みといえる。`);
+      : ` 更新料・礼金収入の寄与により、保守シナリオが楽観シナリオを約${fmtMan(-gap)}上回る点は、本物件の収益構造上の強みといえる。`);
   const pay = m.real.find((r) => r.cum >= m.sale.initialEquity);
   n.payback = pay
     ? `投下自己資金約${fmtMan(m.sale.initialEquity)}は、賃料収入のみで${pay.year}年目に回収される見込みである。`
@@ -848,7 +853,7 @@ function ReportView({ p, initialTitle, onClose }) {
 
   const chartData = m.real.map((r, i) => ({
     year: r.year,
-    現実: Math.round(r.cum / 10000),
+    保守: Math.round(r.cum / 10000),
     楽観: Math.round(opt[i].cum / 10000),
     単年CF: Math.round(r.cf / 10000),
     残債: Math.round(r.balance / 10000),
@@ -896,7 +901,10 @@ function ReportView({ p, initialTitle, onClose }) {
 
       {/* 1. 表紙 */}
       <div className="sheet">
-        <div className="brand">YOMU ｜ YIELD · OCCUPANCY · MORTGAGE · UPKEEP</div>
+        <div className="brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <YomuMark size={22} style={{ color: "#1E3E6B" }} />
+          <span>YOMU ｜ YIELD · OCCUPANCY · MORTGAGE · UPKEEP</span>
+        </div>
         <h1>{title}</h1>
         <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 分析期間: {p.simYears}年(月次計算)</div>
         <div style={{ marginTop: 40 }}>
@@ -943,7 +951,7 @@ function ReportView({ p, initialTitle, onClose }) {
           <Legend wrapperStyle={{ fontSize: 13 }} />
           <ReferenceLine y={0} stroke="#16222E" />
           <Line type="monotone" dataKey="楽観" stroke={T.opt} strokeWidth={2.5} strokeDasharray="7 5" dot={false} />
-          <Line type="monotone" dataKey="現実" stroke={T.real} strokeWidth={3} dot={false} />
+          <Line type="monotone" dataKey="保守" stroke={T.real} strokeWidth={3} dot={false} />
         </ComposedChart>
         <p className="para" style={{ marginTop: 10 }}>{n.trajectory}</p>
         <SheetFoot page={3} total={TOTAL} title={title} />
@@ -1086,9 +1094,12 @@ function CompareReportView({ rows, onClose }) {
       </div>
 
       <div className="sheet">
-        <div className="brand">YOMU ｜ YIELD · OCCUPANCY · MORTGAGE · UPKEEP</div>
+        <div className="brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <YomuMark size={22} style={{ color: "#1E3E6B" }} />
+          <span>YOMU ｜ YIELD · OCCUPANCY · MORTGAGE · UPKEEP</span>
+        </div>
         <h1>{title}</h1>
-        <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 現実シナリオ(売却込み)ベースの比較</div>
+        <div style={{ fontSize: 14, color: "#5B6B7A" }}>作成日: {dt} ／ 保守シナリオ(売却込み)ベースの比較</div>
         <h3 style={{ marginTop: 34 }}>比較対象</h3>
         {rows.map((r, i) => (
           <div key={r.pr.id} style={{ fontSize: 15, padding: "8px 0", borderBottom: "1px dashed #E2E8EF" }}>
@@ -1783,10 +1794,13 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
       <section style={cardSt}>
         <h2 style={h2St}>保有ポートフォリオ</h2>
         {properties.length === 0 ? (
-          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.9 }}>
-            まだ物件が保存されていません。シミュレーションタブで条件を作って保存し、
-            ここで「保有中」にチェックを入れると、ダッシュボードが動き出します。
-            <div style={{ marginTop: 10 }}>
+          <div style={{ textAlign: "center", padding: "28px 16px" }}>
+            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
+            <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
+              まだ物件が保存されていません。<br />
+              まずはシミュレーションタブで条件を作って保存してください。
+            </div>
+            <div style={{ marginTop: 12 }}>
               <button onClick={() => goTab("sim")} style={btnSt(T.navy)}>
                 シミュレーションへ</button>
             </div>
@@ -1879,10 +1893,13 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
               background: "rgba(45,125,210,.06)", border: "1px solid rgba(45,125,210,.2)",
               borderRadius: 12, padding: "14px 18px" }}>{review.text}</p>
           ) : (
-            <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.9 }}>
-              {review.label}の実績がまだ入力されていません。家賃の入金と支出を記録すると、
-              計画との比較レビューがここに自動生成されます。
-              <div style={{ marginTop: 10 }}>
+            <div style={{ textAlign: "center", padding: "28px 16px" }}>
+              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
+              <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
+                {review.label}の実績がまだ入力されていません。<br />
+                運用管理で家賃と支出を記録し、計画との比較を確認してください。
+              </div>
+              <div style={{ marginTop: 12 }}>
                 <button onClick={() => goTab("ops")} style={btnSt(T.navy)}>
                   実績を入力する(運用管理へ)</button>
               </div>
@@ -2077,6 +2094,7 @@ function AuthModal({ open, onClose }) {
       <div style={{ background: "#FFF", borderRadius: 12,
         padding: 24, maxWidth: 400, width: "100%", maxHeight: "90vh", overflowY: "auto",
         boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <YomuLock size={56} vertical style={{ margin: "0 auto 18px" }} />
         <div style={{ display: "flex", gap: 0, marginBottom: 16, border: `1px solid ${T.line}`,
           borderRadius: 8, overflow: "hidden" }}>
           {[["login", "ログイン"], ["signup", "新規登録"]].map(([k, l]) => (
@@ -2583,7 +2601,7 @@ export default function App() {
 
   const chartData = real.map((r, i) => ({
     year: r.year,
-    現実累積: Math.round(r.cum / 10000),
+    保守累積: Math.round(r.cum / 10000),
     楽観累積: Math.round(opt[i].cum / 10000),
     単年CF: Math.round(r.cf / 10000),
     残債: Math.round(r.balance / 10000),
@@ -2616,20 +2634,7 @@ export default function App() {
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
 
         <header style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11.5, letterSpacing: "0.22em", fontWeight: 900,
-            background: T.grad, WebkitBackgroundClip: "text", backgroundClip: "text",
-            color: "transparent", display: "inline-block" }}>
-            現実を、味方につける。
-          </div>
-          <h1 style={{ fontSize: 27, fontWeight: 800, margin: "4px 0 2px", color: T.ink,
-            fontFamily: '"Shippori Mincho",serif', letterSpacing: "0.02em" }}>
-            現実<span style={{ color: T.real }}>派</span>
-            <span style={{ fontSize: 13, fontWeight: 500, color: T.sub, marginLeft: 10,
-              fontFamily: '"Zen Kaku Gothic New",sans-serif' }}>不動産収支シミュレーター</span>
-          </h1>
-          <p style={{ fontSize: 12.5, color: T.sub, margin: 0, lineHeight: 1.6 }}>
-            取得検討から運用・申告まで。AIによる地域市場データの自動反映に対応。
-          </p>
+          <YomuWordmark height={26} />
           <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center",
             flexWrap: "wrap" }}>
             {authEnabled && (user
@@ -2825,8 +2830,12 @@ export default function App() {
             <div style={{ fontSize: 11, color: T.warnInk, marginBottom: 6 }}>{storageNote}</div>
           )}
           {records.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: T.sub, padding: "8px 0" }}>
-              まだ保存されたリサーチはありません。上のパネルで調査を実行すると、結果が自動でここに蓄積されます。
+            <div style={{ textAlign: "center", padding: "28px 16px" }}>
+              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
+              <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
+                まだ保存されたリサーチはありません。<br />
+                上のパネルで市場調査を実行し、結果を保存してください。
+              </div>
             </div>
           ) : (
             records.map((rec) => (
@@ -2873,13 +2882,13 @@ export default function App() {
 
         {/* KPI */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-          <Kpi label={`累積CF ${p.simYears}年(現実${p.taxOn ? "・税引後" : ""})`}
+          <Kpi label={`累積CF ${p.simYears}年(保守${p.taxOn ? "・税引後" : ""})`}
                value={fmtMan(last.cum)} color={last.cum < 0 ? T.real : T.good} />
           <Kpi label={`累積CF ${p.simYears}年(楽観)`} value={fmtMan(lastOpt.cum)} color={T.opt} />
           <Kpi label="楽観とのギャップ"
                value={gap >= 0 ? "−" + fmtMan(gap) : "+" + fmtMan(-gap)}
                color={gap >= 0 ? T.real : T.good}
-               sub={gap >= 0 ? "楽観シミュが見落とす金額" : "更新料・礼金収入の計上で現実が上回る試算"} />
+               sub={gap >= 0 ? "楽観シミュが見落とす金額" : "更新料・礼金収入の計上で保守が上回る試算"} />
           <Kpi label="単年CF初赤字" value={firstDeficit ? `${firstDeficit.year}年目` : "なし"}
                color={firstDeficit ? T.warnInk : T.good} />
           {p.saleOn && (
@@ -2896,7 +2905,7 @@ export default function App() {
         <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
           padding: "14px 8px 4px", marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 8px 8px" }}>
-            累積キャッシュフロー — 楽観と現実のギャップ(万円)
+            累積キャッシュフロー — 楽観と保守のギャップ(万円)
           </h2>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -2910,7 +2919,7 @@ export default function App() {
                     activeDot={false} legendType="none" tooltipType="none" />
               <Line type="monotone" dataKey="楽観累積" stroke={T.opt} strokeWidth={2}
                     strokeDasharray="6 4" dot={false} />
-              <Line type="monotone" dataKey="現実累積" stroke={T.real} strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="保守累積" stroke={T.real} strokeWidth={2.5} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </section>
@@ -2918,7 +2927,7 @@ export default function App() {
         <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(31,58,82,.06)",
           padding: "14px 8px 4px", marginBottom: 16 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 8px 8px" }}>
-            単年キャッシュフロー(現実)とローン残債(万円)
+            単年キャッシュフロー(保守)とローン残債(万円)
           </h2>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -2948,7 +2957,7 @@ export default function App() {
           <h2 onClick={() => setShowTable(!showTable)} style={{ fontSize: 13, fontWeight: 700,
             color: T.navy, margin: 0, cursor: "pointer",
             display: "flex", justifyContent: "space-between" }}>
-            <span>年次明細表(現実シナリオ)</span><span style={{ color: T.sub }}>{showTable ? "−" : "+"}</span>
+            <span>年次明細表(保守シナリオ)</span><span style={{ color: T.sub }}>{showTable ? "−" : "+"}</span>
           </h2>
           {showTable && (
             <div style={{ overflowX: "auto", marginTop: 10 }}>
@@ -3019,7 +3028,7 @@ export default function App() {
                   options={[{ v: "annuity", l: "元利均等" }, { v: "principal", l: "元金均等" }]} />
           <Field label="当初金利" help="属性(年収・勤続)と金融機関で1%台〜4%台まで幅があります。0.5%の差が35年返済では数百万円の差になります。" value={p.rate0} onChange={set("rate0")} unit="%/年" step={0.05} min={0} />
           <Field label="金利上昇ペース" help="変動金利は日銀の政策次第で上がります。返済額が増えても家賃にはすぐ転嫁できないため、上昇局面ではCFが直接削られます。" value={p.rateSlope} onChange={set("rateSlope")} unit="%pt/年" step={0.01} min={0}
-                 hint="毎年この幅で上昇(現実のみ)" />
+                 hint="毎年この幅で上昇(保守のみ)" />
           <Field label="金利上限" value={p.rateCap} onChange={set("rateCap")} unit="%" step={0.1} min={0} />
         </Section>
 
@@ -3075,7 +3084,7 @@ export default function App() {
               fontSize: 13, cursor: "pointer" }}>+ 設備を追加</button>
         </section>
 
-        <Section no="08" title="税金(簡易・現実シナリオのみ)">
+        <Section no="08" title="税金(簡易・保守シナリオのみ)">
           <Check label="不動産所得への課税を考慮する" checked={p.taxOn} onChange={set("taxOn")} />
           <Field label="限界税率(所得税+住民税)" value={p.taxRate} onChange={set("taxRate")} unit="%" step={1} min={0}
                  hint="給与と合算した場合の適用税率" />

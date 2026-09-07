@@ -6,7 +6,7 @@ import {
 import { PLANS, PURCHASE_URL, verifyLicense, loadPlan, savePlan, aiQuota } from "./plan.js";
 import { supabase, authEnabled } from "./auth.js";
 import { T } from "./theme.js";
-import { Field, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
+import { Field, TextField, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
 import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
 import SashineLab from "./features/sashine.jsx";
 import SoubaCheck from "./features/souba.jsx";
@@ -53,7 +53,7 @@ function Section({ no, title, children, defaultOpen = true }) {
         <span style={{ color: T.sub, fontWeight: 400 }}>{no} {open ? "−" : "+"}</span>
       </h2>
       {open && <div style={{ display: "grid", gap: 12,
-        gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>{children}</div>}
+        gridTemplateColumns: "repeat(auto-fit, minmax(164px, 1fr))" }}>{children}</div>}
     </section>
   );
 }
@@ -2744,7 +2744,7 @@ export default function App() {
           <section style={cardSt}>
             <h2 style={h2St}>かんたん入力 — まずはこの3つだけ</h2>
             <div style={{ display: "grid", gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+              gridTemplateColumns: "repeat(auto-fit, minmax(164px, 1fr))" }}>
               <Field label="物件価格" value={p.price} onChange={set("price")} unit="万円" step={50} min={0}
                 help="販売図面や業者提案書の物件価格をそのまま入力します。" />
               <Field label="月額家賃" value={p.rent} onChange={set("rent")} unit="円" step={1000} min={0}
@@ -2772,17 +2772,9 @@ export default function App() {
           </h2>
           <div style={{ display: "grid", gap: 10,
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-            <label style={{ display: "block" }}>
-              <span style={{ fontSize: 12, color: T.sub }}>対象エリア</span>
-              <input value={area} onChange={(e) => setArea(e.target.value)}
-                placeholder="例: 東京都文京区 / 大阪市北区"
-                style={{ ...inputStyle, width: "100%", marginTop: 3 }} />
-            </label>
-            <label style={{ display: "block" }}>
-              <span style={{ fontSize: 12, color: T.sub }}>物件タイプ</span>
-              <input value={ptype} onChange={(e) => setPtype(e.target.value)}
-                style={{ ...inputStyle, width: "100%", marginTop: 3 }} />
-            </label>
+            <TextField label="対象エリア" value={area} onChange={setArea}
+              placeholder="例: 東京都文京区 / 大阪市北区" />
+            <TextField label="物件タイプ" value={ptype} onChange={setPtype} />
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             <button onClick={runFetch} disabled={aiState.status === "loading"}
@@ -3034,7 +3026,7 @@ export default function App() {
 
         <Section no="05" title="運営経費">
           <Field label="賃貸管理委託料" help="入居者対応・集金・クレーム処理を管理会社へ委託する費用で、相場は家賃の3〜5%。安すぎる会社は客付け力が弱いこともあります。" value={p.mgmtPct} onChange={set("mgmtPct")} unit="%(家賃比)" step={0.5} min={0} />
-          <Field label="建物管理費・修繕積立金" help="区分マンション特有の固定費。空室でも毎月発生し、築年の経過とともに段階的に値上がりするのが通例です。" value={p.bldgFee} onChange={set("bldgFee")} unit="円/月" step={1000} min={0} />
+          <Field label="管理費・修繕積立金" help="区分マンション特有の固定費。空室でも毎月発生し、築年の経過とともに段階的に値上がりするのが通例です。" value={p.bldgFee} onChange={set("bldgFee")} unit="円/月" step={1000} min={0} />
           <Field label="積立金の増額率" value={p.bldgFeeInfl} onChange={set("bldgFeeInfl")} unit="%/年" step={0.5} min={0}
                  hint="段階増額方式を近似" />
           <Field label="固定資産税・都市計画税" value={p.tax} onChange={set("tax")} unit="円/年" step={5000} min={0} />
@@ -3149,3 +3141,4 @@ export default function App() {
     </div>
   );
 }
+

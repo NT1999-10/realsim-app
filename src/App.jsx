@@ -13,6 +13,7 @@ import SoubaCheck from "./features/souba.jsx";
 import AuctionTab, { followRecord } from "./features/auction.jsx";
 import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
 import { YomuWordmark, YomuMark, YomuLock } from "./logo.jsx";
+import { Icon } from "./icons.jsx";
 
 
 
@@ -39,6 +40,11 @@ function Check({ label, checked, onChange }) {
 
 
 
+const SECTION_ICONS = {
+  "01": "occupancy", "02": "yield", "03": "occupancy", "04": "mortgage",
+  "05": "manage", "06": "upkeep", "08": "metrics", "09": "yield",
+};
+
 function Section({ no, title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -50,9 +56,16 @@ function Section({ no, title, children, defaultOpen = true }) {
         paddingBottom: open ? 10 : 0, marginBottom: open ? 16 : 0,
         display: "flex", alignItems: "center", gap: 10,
         justifyContent: "space-between", cursor: "pointer" }}>
-        <span>{title}</span>
-        <span style={{ fontFamily: T.mono, fontSize: 11, letterSpacing: ".14em",
-          color: T.gold, fontWeight: 700 }}>{no} {open ? "−" : "+"}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
+          <Icon name={SECTION_ICONS[no] || "metrics"} size={19} color={T.blue} />
+          {title}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8,
+          fontFamily: T.mono, fontSize: 11, letterSpacing: ".14em",
+          color: T.gold, fontWeight: 700 }}>
+          {no}<Icon name="plus" size={15} color={T.gold}
+            style={{ transform: open ? "rotate(45deg)" : "none", transition: "transform .18s" }} />
+        </span>
       </h2>
       {open && <div style={{ display: "grid", gap: 12,
         gridTemplateColumns: "repeat(auto-fit, minmax(164px, 1fr))" }}>{children}</div>}
@@ -170,7 +183,8 @@ async function fetchMarketData(area, ptype, token) {
 // ---------- タブ: 物件比較 ----------
 
 
-function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDelete, onReport }) {
+function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDelete, onReport,
+  onStartSimulation }) {
   const locked = plan !== "pro";
   const [name, setName] = useState("");
   const rows = useMemo(
@@ -184,7 +198,7 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
   return (
     <div>
       <section style={cardSt}>
-        <h2 style={h2St}>現在の設定を物件として保存</h2>
+        <h2 style={h2St}><Icon name="occupancy" size={20} color={T.blue} />現在の設定を物件として保存</h2>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input value={name} onChange={(e) => setName(e.target.value)}
             placeholder="物件名(例: 文京区A 中古区分)"
@@ -205,20 +219,24 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
       </section>
 
       <section style={cardSt}>
-        <h2 style={h2St}>保存済み物件の横並び比較({rows.length}件)</h2>
+        <h2 style={h2St}><Icon name="metrics" size={20} color={T.blue} />保存済み物件の横並び比較({rows.length}件)</h2>
         {rows.length > 0 && (
           <div style={{ margin: "0 0 14px" }}>
             <button onClick={() => (locked ? onUpgrade() : onReport(rows))} style={btnSt(T.navy)}>
-              📄 比較レポートを出力(PDF){locked ? " — Pro" : ""}</button>
+              <Icon name="pdf" size={17} color="#FFF" style={{ verticalAlign: "middle", marginRight: 7 }} />
+              比較レポートを出力(PDF){locked ? " — Pro" : ""}</button>
           </div>
         )}
         {rows.length === 0 ? (
           <div style={{ textAlign: "center", padding: "28px 16px" }}>
-            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
-            <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
-              まだ保存された物件がありません。<br />
-              シミュレーションタブで条件を作り、上のフォームから比較対象を追加してください。
+            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+            <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.8 }}>
+              シミュレーション条件を保存すると、投資指標を横並びで比較できます。
             </div>
+            <button onClick={onStartSimulation} style={{ ...btnSt(T.navy), marginTop: 12 }}>
+              <Icon name="compare" size={17} color="#FFF" style={{ verticalAlign: "middle", marginRight: 7 }} />
+              最初の物件を試算する
+            </button>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -245,11 +263,14 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
                       <td style={cell}>{pct(gross, 2)}</td>
                       <td style={{ ...cell, fontWeight: 700,
                         color: locked ? T.sub : m.irr == null ? T.sub : m.irr >= 0 ? T.good : T.real }}>
-                        {locked ? "\uD83D\uDD12" : pct(m.irr)}</td>
-                      <td style={cell}>{locked ? "\uD83D\uDD12" : pct(m.ccr)}</td>
+                        {locked ? <Icon name="shield" size={15} color={T.faint}
+                          style={{ display: "inline-block" }} /> : pct(m.irr)}</td>
+                      <td style={cell}>{locked ? <Icon name="shield" size={15} color={T.faint}
+                        style={{ display: "inline-block" }} /> : pct(m.ccr)}</td>
                       <td style={{ ...cell,
                         color: locked ? T.sub : m.dscr == null ? T.sub : m.dscr >= 1.2 ? T.good : T.real }}>
-                        {locked ? "\uD83D\uDD12" : m.dscr == null ? "—" : m.dscr.toFixed(2)}</td>
+                        {locked ? <Icon name="shield" size={15} color={T.faint}
+                          style={{ display: "inline-block" }} /> : m.dscr == null ? "—" : m.dscr.toFixed(2)}</td>
                       <td style={cell}>{m.firstDeficitYear ? m.firstDeficitYear + "年目" : "なし"}</td>
                       <td style={cell}>{fmtMan(m.cumFinal)}</td>
                       <td style={{ ...cell, fontWeight: 700,
@@ -327,7 +348,7 @@ function AnalysisTab({ p }) {
   return (
     <div>
       <section style={cardSt}>
-        <h2 style={h2St}>ストレステスト — 悪条件が重なっても耐えるか</h2>
+        <h2 style={h2St}><Icon name="stress" size={20} color={T.blue} />ストレステスト — 悪条件が重なっても耐えるか</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {stress.map((s) => (
             <div key={s.name} style={{ flex: "1 1 200px", borderRadius: 8, padding: "12px 14px",
@@ -350,7 +371,7 @@ function AnalysisTab({ p }) {
       </section>
 
       <section style={{ ...cardSt, padding: "14px 8px 4px" }}>
-        <h2 style={{ ...h2St, margin: "0 8px 8px" }}>感度分析 — どの前提が結果を最も動かすか(総合損益・万円)</h2>
+        <h2 style={{ ...h2St, margin: "0 8px 8px" }}><Icon name="stress" size={20} color={T.blue} />感度分析 — どの前提が結果を最も動かすか(総合損益・万円)</h2>
         <ResponsiveContainer width="100%" height={Math.max(240, sens.data.length * 38)}>
           <ComposedChart data={sens.data} layout="vertical"
             margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
@@ -374,7 +395,7 @@ function AnalysisTab({ p }) {
       </section>
 
       <section style={{ ...cardSt, padding: "14px 8px 4px" }}>
-        <h2 style={{ ...h2St, margin: "0 8px 8px" }}>出口タイミング最適化 — 何年目に売るのが最も得か(万円)</h2>
+        <h2 style={{ ...h2St, margin: "0 8px 8px" }}><Icon name="yield" size={20} color={T.blue} />出口タイミング最適化 — 何年目に売るのが最も得か(万円)</h2>
         <ResponsiveContainer width="100%" height={240}>
           <ComposedChart data={exit} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke={T.line} strokeDasharray="2 4" />
@@ -476,7 +497,7 @@ function OpsTab({ p, setP, actuals, persist }) {
     <div>
       {/* 設備台帳 */}
       <section style={cardSt}>
-        <h2 style={h2St}>設備台帳 — 次の交換時期と想定費用</h2>
+        <h2 style={h2St}><Icon name="upkeep" size={20} color={T.blue} />設備台帳 — 次の交換時期と想定費用</h2>
         {ledger.map((e) => (
           <div key={e.i} style={{ display: "grid",
             gridTemplateColumns: "minmax(90px,1.3fr) 1fr 1fr auto", gap: 10, alignItems: "end",
@@ -505,7 +526,7 @@ function OpsTab({ p, setP, actuals, persist }) {
 
       {/* 予実管理 */}
       <section style={cardSt}>
-        <h2 style={h2St}>予実管理 — 計画CFと実績の乖離を月次で追う</h2>
+        <h2 style={h2St}><Icon name="manage" size={20} color={T.blue} />予実管理 — 計画CFと実績の乖離を月次で追う</h2>
         <div style={{ display: "grid", gap: 10, marginBottom: 10,
           gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
           <Field label="運用開始年(計画1年目)" value={actuals.startYear} unit="年" step={1} min={2000}
@@ -533,7 +554,7 @@ function OpsTab({ p, setP, actuals, persist }) {
           </label>
           <label style={{ display: "block" }}>
             <span style={{ fontSize: 12, color: T.sub, display: "block", marginBottom: 3 }}>金額(円)</span>
-            <input type="number" value={form.amount} placeholder="85000"
+            <input id="ops-amount" type="number" value={form.amount} placeholder="85000"
               style={{ ...inSt, width: "100%" }}
               onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </label>
@@ -595,9 +616,20 @@ function OpsTab({ p, setP, actuals, persist }) {
 
       {/* 申告集計 */}
       <section style={cardSt}>
-        <h2 style={h2St}>確定申告用 科目別集計</h2>
+        <h2 style={h2St}><Icon name="pdf" size={20} color={T.blue} />確定申告用 科目別集計</h2>
         {yearsAvail.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: T.sub }}>予実管理に実績を記録すると、ここに年別・科目別の集計が表示されます。</div>
+          <div style={{ textAlign: "center", padding: "22px 16px 8px" }}>
+            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+            <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.8 }}>
+              収入・支出を記録すると、年別・科目別の申告集計を自動作成できます。
+            </div>
+            <button onClick={() => document.getElementById("ops-amount")?.focus()}
+              style={{ ...btnSt(T.navy), marginTop: 12 }}>
+              <Icon name="manage" size={17} color="#FFF"
+                style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+              最初の実績を記録する
+            </button>
+          </div>
         ) : (
           <>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
@@ -632,12 +664,14 @@ function OpsTab({ p, setP, actuals, persist }) {
                 [["科目区分", "科目", "金額(円)"],
                  ...Object.entries(sums.by).map(([k, v]) => [...k.split("|"), v]),
                  ["差引", "", sums.inc - sums.exp]],
-                `収支集計_${ty}.csv`)}>科目別集計CSV</button>
+                `収支集計_${ty}.csv`)}><Icon name="pdf" size={17} color="#FFF"
+                  style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />科目別集計CSV</button>
               <button style={btnSt(T.sub)} onClick={() => dlCsv(
                 [["年月", "区分", "科目", "金額(円)", "メモ"],
                  ...sums.items.map((x) => [x.month, x.kind === "income" ? "収入" : "支出",
                    x.category, x.amount, x.memo || ""])],
-                `収支明細_${ty}.csv`)}>明細CSV</button>
+                `収支明細_${ty}.csv`)}><Icon name="pdf" size={17} color="#FFF"
+                  style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />明細CSV</button>
             </div>
             <div style={{ fontSize: 11, color: T.sub, marginTop: 10, lineHeight: 1.6 }}>
               減価償却費は現金支出を伴わないためここには含まれません。申告時はシミュレーションタブの償却設定(建物割合×価格÷償却年数)を別途計上してください。
@@ -725,21 +759,59 @@ function DiagnosisCard({ diag }) {
     warn: { color: T.warnInk, bg: T.warnBg, line: T.warnLine, label: "要注意", lamp: "y" },
     danger: { color: T.danger, bg: T.dangerSoft, line: "#F3C3BC", label: "危険", lamp: "r" },
   }[diag.level];
+  const lamps = [
+    { key: "r", color: T.danger, ring: "rgba(192,57,43,.18)" },
+    { key: "y", color: "#DFA82C", ring: "rgba(223,168,44,.20)" },
+    { key: "g", color: T.good, ring: "rgba(18,121,90,.18)" },
+  ];
   return (
     <section style={{ ...cardSt, border: `1px solid ${conf.line}`,
       borderLeft: `5px solid ${conf.color}`, background: conf.bg }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ width: 14, height: 14, borderRadius: 7, background: conf.color,
-          boxShadow: `0 0 0 4px ${conf.color}33`, display: "inline-block" }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <span style={{ display: "inline-flex", flexDirection: "column", gap: 6,
+          padding: "7px 6px", borderRadius: 10, background: "rgba(255,255,255,.72)" }}>
+          {lamps.map((lamp) => (
+            <span key={lamp.key} style={{ width: 14, height: 14, borderRadius: 7,
+              background: conf.lamp === lamp.key ? lamp.color : "rgba(20,32,47,.13)",
+              boxShadow: conf.lamp === lamp.key ? `0 0 0 4px ${lamp.ring}` : "none" }} />
+          ))}
+        </span>
+        <Icon name="signal" size={22} color={conf.color} />
         <span style={{ fontFamily: T.serif, fontSize: 19, fontWeight: 700,
           color: conf.color }}>診断: {conf.label}</span>
       </div>
-      <p style={{ fontSize: 13, lineHeight: 1.85, margin: "0 0 8px", color: T.ink }}>
-        {diag.summary.join(" ")}</p>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12, margin: "0 0 12px" }}>
+        <span style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden",
+          background: "#FFF", border: `1px solid ${T.line}`, flex: "0 0 auto" }}>
+          <svg width="78" height="82" viewBox="0 0 200 210" aria-hidden="true"
+            style={{ display: "block", margin: "-1px 0 0 -3px" }}>
+            <use href="#il-woman" />
+          </svg>
+        </span>
+        <span style={{ position: "relative", flex: 1,
+          background: "linear-gradient(120deg,#FEF5F3,#fff 60%)",
+          border: "1px solid #F3CFC9", borderRadius: 14, padding: "13px 17px",
+          boxShadow: T.sh1, fontSize: 13.5, lineHeight: 1.85, color: T.ink }}>
+          <span style={{ position: "absolute", width: 14, height: 14, left: -8, bottom: 18,
+            background: "#FEF5F3", borderLeft: "1px solid #F3CFC9",
+            borderBottom: "1px solid #F3CFC9", transform: "rotate(45deg)" }} />
+          {diag.summary[0]}
+        </span>
+      </div>
+      {diag.summary.length > 1 && (
+        <p style={{ fontSize: 13, lineHeight: 1.85, margin: "0 0 8px", color: T.ink }}>
+          {diag.summary.slice(1).join(" ")}</p>
+      )}
       {diag.dangers.map((d, i) => (
-        <div key={"d" + i} style={{ fontSize: 12.5, color: T.real, lineHeight: 1.8 }}>⛔ {d}</div>))}
+        <div key={"d" + i} style={{ display: "flex", alignItems: "flex-start", gap: 7,
+          fontSize: 12.5, color: T.danger, lineHeight: 1.8 }}>
+          <Icon name="alert" size={16} color={T.danger} style={{ marginTop: 3 }} />{d}
+        </div>))}
       {diag.warns.map((d, i) => (
-        <div key={"w" + i} style={{ fontSize: 12.5, color: T.warnInk, lineHeight: 1.8 }}>⚠ {d}</div>))}
+        <div key={"w" + i} style={{ display: "flex", alignItems: "flex-start", gap: 7,
+          fontSize: 12.5, color: T.warnInk, lineHeight: 1.8 }}>
+          <Icon name="alert" size={16} color={T.warnInk} style={{ marginTop: 3 }} />{d}
+        </div>))}
       {diag.optimistic.length > 0 && (
         <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${T.line}` }}>
           {diag.optimistic.map((d, i) => (
@@ -897,7 +969,8 @@ function ReportView({ p, initialTitle, onClose }) {
       <div className="rp-bar">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="レポートのタイトル" />
         <button style={{ background: T.real, color: "#fff" }} onClick={() => window.print()}>
-          印刷 / PDFとして保存</button>
+          <Icon name="pdf" size={17} color="#FFF"
+            style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />印刷 / PDFとして保存</button>
         <button style={{ background: "#fff", color: T.ink }} onClick={onClose}>閉じる</button>
         <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)" }}>
           印刷ダイアログで「PDFに保存」・用紙A4・横向き・余白なしを選択してください</span>
@@ -999,9 +1072,15 @@ function ReportView({ p, initialTitle, onClose }) {
         {diag.dangers.length === 0 && diag.warns.length === 0 && (
           <p className="para">本試算の前提において、重大な危険シグナルは検出されていない。</p>)}
         {diag.dangers.map((d, i) => (
-          <div key={"d" + i} className="flagline" style={{ color: T.real }}>⛔ {d}</div>))}
+          <div key={"d" + i} className="flagline" style={{ color: T.real }}>
+            <Icon name="alert" size={15} color={T.danger}
+              style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 6 }} />{d}
+          </div>))}
         {diag.warns.map((d, i) => (
-          <div key={"w" + i} className="flagline" style={{ color: "#8A5A12" }}>⚠ {d}</div>))}
+          <div key={"w" + i} className="flagline" style={{ color: "#8A5A12" }}>
+            <Icon name="alert" size={15} color={T.warnInk}
+              style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 6 }} />{d}
+          </div>))}
         {diag.optimistic.length > 0 && (<>
           <h3 style={{ marginTop: 22 }}>前提の点検(楽観側に寄っている可能性のある入力)</h3>
           {diag.optimistic.map((d, i) => (
@@ -1091,7 +1170,8 @@ function CompareReportView({ rows, onClose }) {
       <style>{REPORT_CSS}</style>
       <div className="rp-bar">
         <button style={{ background: T.real, color: "#fff" }} onClick={() => window.print()}>
-          印刷 / PDFとして保存</button>
+          <Icon name="pdf" size={17} color="#FFF"
+            style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />印刷 / PDFとして保存</button>
         <button style={{ background: "#fff", color: T.ink }} onClick={onClose}>閉じる</button>
         <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)" }}>
           印刷ダイアログで「PDFに保存」・用紙A4・横向き・余白なしを選択してください</span>
@@ -1141,7 +1221,10 @@ function CompareReportView({ rows, onClose }) {
         <h3 style={{ marginTop: 24 }}>総評</h3>
         <p className="para">{rec}</p>
         {cautions.map((c, i) => (
-          <div key={i} className="flagline" style={{ color: T.real }}>⚠ {c}</div>))}
+          <div key={i} className="flagline" style={{ color: T.real }}>
+            <Icon name="alert" size={15} color={T.danger}
+              style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 6 }} />{c}
+          </div>))}
         <SheetFoot page={2} total={TOTAL} title={title} />
       </div>
 
@@ -1412,7 +1495,7 @@ function LoanLab({ p, actuals }) {
 
   return (
     <section style={cardSt}>
-      <h2 style={h2St}>繰上返済・借り換えシミュレーター</h2>
+      <h2 style={h2St}><Icon name="mortgage" size={20} color={T.blue} />繰上返済・借り換えシミュレーター</h2>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
         <Field label="現在の残債" value={bal} onChange={setBal} unit="万円" step={50} min={1} />
         <Field label="現在の金利" value={rate} onChange={setRate} unit="%" step={0.05} min={0} />
@@ -1430,7 +1513,8 @@ function LoanLab({ p, actuals }) {
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
         <div style={box}>
-          <h3 style={h3}>💰 繰上返済したら?</h3>
+          <h3 style={h3}><Icon name="sync" size={18} color={T.blue}
+            style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 6 }} />繰上返済したら?</h3>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
             <Field label="繰上額" value={amt} onChange={setAmt} unit="万円" step={10} min={1} />
             <Select label="タイプ" value={ptype} onChange={setPtype}
@@ -1453,7 +1537,8 @@ function LoanLab({ p, actuals }) {
         </div>
 
         <div style={box}>
-          <h3 style={h3}>🔄 借り換えたら?</h3>
+          <h3 style={h3}><Icon name="sync" size={18} color={T.blue}
+            style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 6 }} />借り換えたら?</h3>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
             <Field label="借換後の金利" value={nRate} onChange={setNRate} unit="%" step={0.05} min={0} />
             <Field label="借換後の期間" value={nYears} onChange={setNYears} unit="年" step={1} min={1} />
@@ -1528,7 +1613,7 @@ function EventCalendar({ p, actuals, persist, extraEvents = [] }) {
 
   return (
     <section style={cardSt}>
-      <h2 style={h2St}>イベントカレンダー — 今後12ヶ月の支出・手続き予定</h2>
+      <h2 style={h2St}><Icon name="manage" size={20} color={T.blue} />イベントカレンダー — 今後12ヶ月の支出・手続き予定</h2>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
         marginBottom: 12 }}>
         <input type="month" value={f.month}
@@ -1581,6 +1666,7 @@ const LEAD_STATUSES = ["気になる", "検討中", "内見予定", "見送り"]
 function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
   const [f, setF] = useState({ name: "", url: "", price: "", rent: "", memo: "" });
   const [msg, setMsg] = useState("");
+  const nameRef = useRef(null);
   const cap = isPro ? 50 : 5;
 
   const add = async () => {
@@ -1601,12 +1687,12 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
 
   return (
     <section style={cardSt}>
-      <h2 style={h2St}>検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
+      <h2 style={h2St}><Icon name="occupancy" size={20} color={T.blue} />検討候補トレイ — 気になった物件をメモ({leads.length}/{cap})</h2>
       <LeadIntake onAdd={onAdd} />
       <div style={{ display: "grid", gap: 8,
         gridTemplateColumns: "1.4fr 1.6fr 0.8fr 0.9fr", alignItems: "end" }}>
         <label style={{ fontSize: 11.5, color: T.sub }}>物件名・目印*
-          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
+          <input ref={nameRef} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
             placeholder="例: 文京区 白山 1K 3階" style={inSt} /></label>
         <label style={{ fontSize: 11.5, color: T.sub }}>URL(任意)
           <input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })}
@@ -1628,10 +1714,17 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
       {msg && <div style={{ fontSize: 12, color: T.real, marginTop: 6 }}>{msg}</div>}
 
       {leads.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: T.sub, marginTop: 14, lineHeight: 1.9 }}>
-          ポータルサイトで気になった物件を、ここにストックしておけます。
-          価格と家賃を入れておくと表面利回りが自動計算され、「診断する」で
-          そのままシミュレーションに流せます。
+        <div style={{ textAlign: "center", padding: "24px 16px 8px" }}>
+          <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.8 }}>
+            気になる物件を登録すると、利回りを確認してそのまま試算へ進めます。
+          </div>
+          <button onClick={() => nameRef.current?.focus()}
+            style={{ ...btnSt(T.navy), marginTop: 12 }}>
+            <Icon name="plus" size={17} color="#FFF"
+              style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+            最初の候補を登録する
+          </button>
         </div>
       ) : (
         <div style={{ marginTop: 14 }}>
@@ -1796,13 +1889,12 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
     <div>
       {/* 保有物件の設定 */}
       <section style={cardSt}>
-        <h2 style={h2St}>保有ポートフォリオ</h2>
+        <h2 style={h2St}><Icon name="occupancy" size={20} color={T.blue} />保有ポートフォリオ</h2>
         {properties.length === 0 ? (
           <div style={{ textAlign: "center", padding: "28px 16px" }}>
-            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
-            <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
-              まだ物件が保存されていません。<br />
-              まずはシミュレーションタブで条件を作って保存してください。
+            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+            <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.8 }}>
+              物件を保存すると、保有状況と純資産の推移をまとめて確認できます。
             </div>
             <div style={{ marginTop: 12 }}>
               <button onClick={() => goTab("sim")} style={btnSt(T.navy)}>
@@ -1863,7 +1955,7 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
       {/* 純資産トラッカー */}
       {owned.length > 0 && (
         <section style={{ ...cardSt, padding: "14px 8px 4px" }}>
-          <h2 style={{ ...h2St, margin: "0 8px 8px" }}>純資産トラッカー — 取得からの積み上がり(万円・計画ベース)</h2>
+          <h2 style={{ ...h2St, margin: "0 8px 8px" }}><Icon name="yield" size={20} color={T.blue} />純資産トラッカー — 取得からの積み上がり(万円・計画ベース)</h2>
           {isPro ? (
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={track} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
@@ -1879,7 +1971,8 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
             <LockCard onUpgrade={onUpgrade} label="純資産トラッカー">
               <div style={{ height: 240, display: "flex", alignItems: "center",
                 justifyContent: "center", fontSize: 24, fontWeight: 800, color: T.teal }}>
-                📈 {fmtMan(agg.net)}</div>
+                <Icon name="yield" size={24} color={T.teal} style={{ marginRight: 8 }} />
+                {fmtMan(agg.net)}</div>
             </LockCard>
           )}
           <div style={{ fontSize: 11, color: T.sub, margin: "4px 8px 10px" }}>
@@ -1890,7 +1983,7 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
 
       {/* 月次レビュー */}
       <section style={cardSt}>
-        <h2 style={h2St}>月次レビュー — {review.label}</h2>
+        <h2 style={h2St}><Icon name="manage" size={20} color={T.blue} />月次レビュー — {review.label}</h2>
         {isPro ? (
           review.text ? (
             <p style={{ fontSize: 14, lineHeight: 2.1, margin: 0,
@@ -1898,10 +1991,9 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
               borderRadius: 12, padding: "14px 18px" }}>{review.text}</p>
           ) : (
             <div style={{ textAlign: "center", padding: "28px 16px" }}>
-              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
-              <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
-                {review.label}の実績がまだ入力されていません。<br />
-                運用管理で家賃と支出を記録し、計画との比較を確認してください。
+              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+              <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.8 }}>
+                {review.label}の家賃と支出を記録すると、計画との差を自動で振り返れます。
               </div>
               <div style={{ marginTop: 12 }}>
                 <button onClick={() => goTab("ops")} style={btnSt(T.navy)}>
@@ -2663,7 +2755,7 @@ export default function App() {
               ? <span style={{ fontSize: 11, color: T.sub }}>AI市場調査 今月あと{quotaLeft}回</span>
               : <button onClick={() => (authEnabled && !user ? setAuthOpen(true) : setUpgradeOpen(true))}
                   style={{ padding: "4px 14px",
-                  background: T.real, color: "#FFF", border: "none", borderRadius: 12,
+                  background: T.gradGold, color: T.aiInk, border: "none", borderRadius: 12,
                   fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                   Proにアップグレード</button>}
           </div>
@@ -2686,18 +2778,22 @@ export default function App() {
         {cmpReport && <CompareReportView rows={cmpReport} onClose={() => setCmpReport(null)} />}
 
         <nav style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-          {[["home", "ホーム", true], ["sim", "シミュレーション", true],
-            ["cmp", "物件比較", true],
-            ["ana", "分析", isPro], ["ops", "運用管理", isPro],
-            ["auc", "競売", isPro]]
-            .map(([k, l, ok]) => (
+          {[["home", "ホーム", true, "metrics"], ["sim", "シミュレーション", true, "compare"],
+            ["cmp", "物件比較", true, "metrics"],
+            ["ana", "分析", isPro, "stress"], ["ops", "運用管理", isPro, "manage"],
+            ["auc", "競売", isPro, "auction"]]
+            .map(([k, l, ok, icon]) => (
             <button key={k} onClick={() => (ok ? setTab(k) : setUpgradeOpen(true))} style={{
               padding: "8px 16px", borderRadius: T.pill, fontSize: 13, fontWeight: 700,
-              cursor: "pointer",
+              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
               border: tab === k ? "1px solid transparent" : `1px solid ${T.line}`,
               background: tab === k ? T.grad : T.card,
               boxShadow: tab === k ? T.sh1 : "none",
-              color: tab === k ? "#FFF" : ok ? T.ink : T.sub }}>{ok ? l : "\uD83D\uDD12 " + l}</button>
+              color: tab === k ? "#FFF" : ok ? T.ink : T.sub }}>
+              {tab !== k && <Icon name={ok ? icon : "shield"} size={15}
+                color={ok ? T.blue : T.faint} />}
+              {l}
+            </button>
           ))}
         </nav>
 
@@ -2746,7 +2842,7 @@ export default function App() {
         {/* かんたん入力 */}
         {mode === "easy" && (
           <section style={cardSt}>
-            <h2 style={h2St}>かんたん入力 — まずはこの3つだけ</h2>
+            <h2 style={h2St}><Icon name="compare" size={20} color={T.blue} />かんたん入力 — まずはこの3つだけ</h2>
             <div style={{ display: "grid", gap: 12,
               gridTemplateColumns: "repeat(auto-fit, minmax(164px, 1fr))" }}>
               <Field label="物件価格" value={p.price} onChange={set("price")} unit="万円" step={50} min={0}
@@ -2766,10 +2862,12 @@ export default function App() {
         {/* AI market data */}
         <section style={{ background: T.aiBg, border: `1px solid ${T.aiLine}`, borderRadius: 10,
           padding: 16, marginBottom: 12 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: T.aiInk, margin: "0 0 10px" }}>
+          <h2 style={{ fontSize: 13, fontWeight: 700, color: T.aiInk, margin: "0 0 10px",
+            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <Icon name="ai" size={20} color={T.aiInk} />
             AI市場データ取得(ウェブ検索) — 家賃・金利から礼金/AD/管理料の商習慣、期待利回りまで13項目を自動反映
             <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, padding: "1px 9px",
-              borderRadius: 10, background: isPro ? "transparent" : T.real,
+              borderRadius: 10, background: isPro ? "transparent" : T.gold,
               border: isPro ? `1px solid ${T.aiInk}` : "none",
               color: isPro ? T.aiInk : "#FFF" }}>
               {isPro ? `今月あと${quotaLeft}回` : "Pro限定"}</span>
@@ -2819,7 +2917,9 @@ export default function App() {
           padding: 16, marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: T.navy, margin: "0 0 4px",
             display: "flex", justifyContent: "space-between" }}>
-            <span>保存済みリサーチ({records.length}件)</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Icon name="ai" size={19} color={T.blue} />保存済みリサーチ({records.length}件)
+            </span>
             <span style={{ color: T.sub, fontWeight: 400, fontSize: 11 }}>呼び出しは利用枠を消費しません</span>
           </h2>
           {storageNote && (
@@ -2827,11 +2927,17 @@ export default function App() {
           )}
           {records.length === 0 ? (
             <div style={{ textAlign: "center", padding: "28px 16px" }}>
-              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: "#1E3E6B" }} />
-              <div style={{ fontSize: 13.5, color: "#41526A", lineHeight: 1.8 }}>
-                まだ保存されたリサーチはありません。<br />
-                上のパネルで市場調査を実行し、結果を保存してください。
+              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+              <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.8 }}>
+                市場調査を実行すると、結果を保存していつでも再利用できます。
               </div>
+              <button onClick={runFetch} disabled={aiState.status === "loading"}
+                style={{ ...btnSt(T.navy), marginTop: 12,
+                  opacity: aiState.status === "loading" ? 0.6 : 1 }}>
+                <Icon name="ai" size={17} color="#FFF"
+                  style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+                最初の市場調査を実行する
+              </button>
             </div>
           ) : (
             records.map((rec) => (
@@ -2873,7 +2979,9 @@ export default function App() {
             style={{ padding: "8px 18px", background: "#FFF", color: T.navy,
               border: `1.5px solid ${T.navy}`, borderRadius: 8, fontSize: 12.5,
               fontWeight: 700, cursor: "pointer" }}>
-            📄 レポート出力(PDF){!isPro && " — Pro"}</button>
+            <Icon name="pdf" size={17} color={T.navy}
+              style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+            レポート出力(PDF){!isPro && " — Pro"}</button>
         </div>
 
         {/* KPI */}
@@ -2901,7 +3009,7 @@ export default function App() {
         <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: T.r, boxShadow: T.sh1,
           padding: "14px 8px 4px", marginBottom: 12 }}>
           <h2 style={{ ...h2St, margin: "0 8px 8px" }}>
-            累積キャッシュフロー — 楽観と保守のギャップ(万円)
+            <Icon name="compare" size={20} color={T.blue} />累積キャッシュフロー — 楽観と保守のギャップ(万円)
           </h2>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -2923,7 +3031,7 @@ export default function App() {
         <section style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: T.r, boxShadow: T.sh1,
           padding: "14px 8px 4px", marginBottom: 16 }}>
           <h2 style={{ ...h2St, margin: "0 8px 8px" }}>
-            単年キャッシュフロー(保守)とローン残債(万円)
+            <Icon name="mortgage" size={20} color={T.blue} />単年キャッシュフロー(保守)とローン残債(万円)
           </h2>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -3052,7 +3160,9 @@ export default function App() {
             color: T.navy, margin: "0 0 16px", letterSpacing: "0.01em",
             borderBottom: `1px solid ${T.line}`, paddingBottom: 10,
             display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
-            <span>設備交換サイクル(大家負担)</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
+              <Icon name="upkeep" size={19} color={T.blue} />設備交換サイクル(大家負担)
+            </span>
             <span style={{ fontFamily: T.mono, fontSize: 11, letterSpacing: ".14em",
               color: T.gold, fontWeight: 700 }}>07</span>
           </h2>
@@ -3110,7 +3220,8 @@ export default function App() {
           <CompareTab properties={properties} current={p} plan={plan}
             onUpgrade={() => setUpgradeOpen(true)}
             onReport={(rows) => setCmpReport(rows)}
-            onSave={saveCurrentProperty} onLoad={loadProperty} onDelete={deleteProperty} />
+            onSave={saveCurrentProperty} onLoad={loadProperty} onDelete={deleteProperty}
+            onStartSimulation={() => setTab("sim")} />
         )}
         {tab === "ana" && isPro && <AnalysisTab p={p} />}
         {tab === "ops" && isPro && (

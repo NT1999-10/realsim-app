@@ -3,6 +3,8 @@ import { supabase, authEnabled } from "../auth.js";
 import { T } from "../theme.js";
 import { cardSt, h2St, btnSt } from "../ui.jsx";
 import AuctionPasteImport from "./auction-paste-ui.jsx";
+import { Icon } from "../icons.jsx";
+import { YomuMark } from "../logo.jsx";
 
 const PREFECTURES = [
   "", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
@@ -283,7 +285,7 @@ function AdminImportSection() {
 
   return (
     <section style={{ ...cardSt, border: `1px solid ${T.teal}` }}>
-      <h2 style={h2St}>管理者: 物件データ登録</h2>
+      <h2 style={h2St}><Icon name="auction" size={20} color={T.blue} />管理者: 物件データ登録</h2>
       <div style={{ fontSize: 12, color: T.warnInk, background: T.warnBg,
         borderRadius: 8, padding: "8px 10px", lineHeight: 1.7, marginBottom: 14 }}>
         BITの公表情報を確認のうえ転記してください。3点セットPDFの保存・転載は行いません。
@@ -298,7 +300,8 @@ function AdminImportSection() {
       </h3>
       <div style={{ display: "grid", gap: 10,
         gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
-        {field("事件番号*", "case_no", { placeholder: "令和8年(ケ)第1号", required: true })}
+        {field("事件番号*", "case_no", { id: "auction-case-no",
+          placeholder: "令和8年(ケ)第1号", required: true })}
         {field("裁判所名", "court", { placeholder: "東京地方裁判所" })}
         {field("物件番号", "item_no", { type: "number", min: 1, step: 1 })}
         <label style={labelSt}>都道府県
@@ -416,7 +419,18 @@ function AdminImportSection() {
             </button>
           </div>
         )) : (
-          <div style={{ fontSize: 12.5, color: T.sub }}>登録済みデータはありません。</div>
+          <div style={{ textAlign: "center", padding: "22px 16px 8px" }}>
+            <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+            <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.8 }}>
+              競売データを登録すると、検索画面から照合・フォローできます。
+            </div>
+            <button type="button" onClick={() => document.getElementById("auction-case-no")?.focus()}
+              style={{ ...btnSt(T.navy), marginTop: 12 }}>
+              <Icon name="plus" size={17} color="#FFF"
+                style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+              最初のデータを登録する
+            </button>
+          </div>
         )}
       </div>
     </section>
@@ -428,7 +442,9 @@ function Checklist({ occupancy, embedded = false }) {
     <section style={embedded
       ? { marginTop: 10, padding: 10, background: "#F9FBFC", borderRadius: 8 }
       : { ...cardSt, marginTop: 14 }}>
-      <h2 style={embedded ? { ...h2St, fontSize: 13 } : h2St}>3点セット確認チェックリスト</h2>
+      <h2 style={embedded ? { ...h2St, fontSize: 13 } : h2St}>
+        <Icon name="alert" size={20} color={T.warnInk} />3点セット確認チェックリスト
+      </h2>
       <div style={{ display: "grid", gap: 8,
         gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))" }}>
         {CHECK_ITEMS.map((label) => (
@@ -610,13 +626,13 @@ export default function AuctionTab({
 
   const followedIds = useMemo(() => new Set(follows.map((item) => item.id)), [follows]);
 
-  const search = async (page = 1) => {
+  const search = async (page = 1, nextFilters = filters) => {
     if (!ready) return;
     setStatus("loading");
     setError("");
-    await saveData("auction-search", filters);
+    await saveData("auction-search", nextFilters);
     try {
-      const data = await fetchAuctions(filters, page);
+      const data = await fetchAuctions(nextFilters, page);
       setResult(data);
       setStatus("done");
     } catch (err) {
@@ -629,7 +645,7 @@ export default function AuctionTab({
     <div>
       <AdminImportSection />
       <section style={cardSt}>
-        <h2 style={h2St}>競売ウォッチ</h2>
+        <h2 style={h2St}><Icon name="auction" size={20} color={T.blue} />競売ウォッチ</h2>
         <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7, marginBottom: 12 }}>
           管理者がBITから確認・登録した競売物件を検索できます。
         </div>
@@ -685,7 +701,9 @@ export default function AuctionTab({
         <section style={cardSt}>
           <div style={{ display: "flex", justifyContent: "space-between",
             alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            <h2 style={{ ...h2St, marginBottom: 0 }}>検索結果 {result.total.toLocaleString()}件</h2>
+            <h2 style={{ ...h2St, marginBottom: 0 }}>
+              <Icon name="metrics" size={20} color={T.blue} />検索結果 {result.total.toLocaleString()}件
+            </h2>
             <span style={{ fontSize: 11.5, color: T.sub }}>{result.page}ページ目</span>
           </div>
           {result.items.length ? (
@@ -696,8 +714,18 @@ export default function AuctionTab({
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: T.sub, padding: "16px 0" }}>
-              条件に合う入札受付中の物件はありません。
+            <div style={{ textAlign: "center", padding: "26px 16px 10px" }}>
+              <YomuMark size={44} style={{ margin: "0 auto 14px", opacity: 0.32, color: T.blue }} />
+              <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.8 }}>
+                検索条件を広げると、入札受付中の物件を見つけやすくなります。
+              </div>
+              <button type="button" onClick={() => {
+                setFilters(DEFAULT_FILTERS); search(1, DEFAULT_FILTERS);
+              }} style={{ ...btnSt(T.navy), marginTop: 12 }}>
+                <Icon name="auction" size={17} color="#FFF"
+                  style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+                条件をクリアして再検索
+              </button>
             </div>
           )}
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
@@ -713,8 +741,9 @@ export default function AuctionTab({
 
       <Checklist />
 
-      <div style={{ fontSize: 11.5, color: T.real, lineHeight: 1.7,
-        padding: "0 4px 14px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7,
+        fontSize: 11.5, color: T.real, lineHeight: 1.7, padding: "0 4px 14px" }}>
+        <Icon name="alert" size={16} color={T.danger} style={{ marginTop: 2 }} />
         競売には引渡し・占有・瑕疵のリスクがあり、3点セットの精読と現地確認が不可欠です
       </div>
     </div>

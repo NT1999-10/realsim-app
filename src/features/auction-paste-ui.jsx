@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { T } from "../theme.js";
 import { btnSt } from "../ui.jsx";
+import { Icon } from "../icons.jsx";
 import {
   parseAuctionPaste,
   updateAuctionPasteRow,
@@ -120,11 +121,13 @@ export default function AuctionPasteImport({ request, onImported }) {
       background: "rgba(43,184,163,.04)", marginBottom: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8,
         justifyContent: "space-between", flexWrap: "wrap" }}>
-        <h3 style={{ fontSize: 15, color: T.navy, margin: 0 }}>
-          表・CSVを貼り付けて一括登録（推奨）
+        <h3 style={{ display: "flex", alignItems: "center", gap: 8,
+          fontSize: 15, color: T.navy, margin: 0 }}>
+          <Icon name="sync" size={19} color={T.blue} />表・CSVを貼り付けて一括登録（推奨）
         </h3>
         <button type="button" onClick={downloadAuctionTemplate}
-          style={btnSt(T.sub)}>CSVテンプレートをダウンロード</button>
+          style={btnSt(T.sub)}><Icon name="pdf" size={17} color="#FFF"
+            style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />CSVテンプレートをダウンロード</button>
       </div>
       <p style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7, margin: "9px 0" }}>
         BITの検索結果ページで表の範囲を選択して Ctrl+C し、そのまま貼り付けてください。

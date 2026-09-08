@@ -5,6 +5,7 @@ import {
 import { supabase, authEnabled } from "../auth.js";
 import { T } from "../theme.js";
 import { Field, TextField, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "../ui.jsx";
+import { Icon } from "../icons.jsx";
 
 const PREFECTURES = [
   ["01", "北海道"], ["02", "青森県"], ["03", "岩手県"], ["04", "宮城県"],
@@ -151,7 +152,7 @@ export default function SoubaCheck({ p, isPro, onUpgrade }) {
 
   const content = (
     <section style={cardSt}>
-      <h2 style={h2St}>国交省データで相場照合</h2>
+      <h2 style={h2St}><Icon name="metrics" size={20} color={T.blue} />国交省データで相場照合</h2>
       <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7, marginBottom: 12 }}>
         国土交通省の直近の取引事例(データ整備済みの過去3年分)から、対象物件の㎡単価を照合します。
       </div>

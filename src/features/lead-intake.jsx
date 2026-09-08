@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { T } from "../theme.js";
 import { btnSt } from "../ui.jsx";
+import { Icon } from "../icons.jsx";
 
 export function decodeLeadPayload(encoded) {
   const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
@@ -149,7 +150,9 @@ export default function LeadIntake({ onAdd }) {
   return (<>
     <button type="button" onClick={openIntake}
       style={{ ...btnSt(T.teal), marginBottom: 12 }}>
-      📥 ページから取り込み
+      <Icon name="occupancy" size={17} color="#FFF"
+        style={{ display: "inline-block", verticalAlign: "-4px", marginRight: 7 }} />
+      ページから取り込み
     </button>
 
     {open && (
@@ -168,7 +171,10 @@ export default function LeadIntake({ onAdd }) {
             boxShadow: T.sh3 }}>
           <div style={{ display: "flex", justifyContent: "space-between",
             alignItems: "center", gap: 12, marginBottom: 14 }}>
-            <h3 style={{ margin: 0, fontSize: 16, color: T.navy }}>ページから取り込み</h3>
+            <h3 style={{ margin: 0, fontSize: 16, color: T.navy,
+              display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="occupancy" size={19} color={T.blue} />ページから取り込み
+            </h3>
             <button type="button" onClick={closeIntake} aria-label="閉じる"
               style={{ border: "none", background: "none", color: T.sub,
                 fontSize: 22, cursor: "pointer" }}>×</button>

@@ -1483,7 +1483,7 @@ function AccountModal({ open, onClose, user, profile, onResetDemo }) {
 function valuationNetAt(q, t) {
   const tt = Math.max(0, Math.min(t, q.simYears));
   const gross = q.saleMode === "yield"
-    ? (q.rent * Math.pow(1 - q.rentDecline / 100, tt) * 12) / Math.max(0.1, q.exitYieldPct / 100)
+    ? (q.rent * Math.pow(1 - q.rentDecline / 100, tt) * 12) / (Math.max(1, q.exitYieldPct) / 100)
     : q.price * 10000 * Math.pow(1 + q.priceTrendPct / 100, tt);
   return gross * (1 - q.sellCostPct / 100);
 }

@@ -112,7 +112,7 @@ export function saleAnalysis(p, real) {
   const last = real[real.length - 1];
   let salePrice;
   if (p.saleMode === "yield") {
-    salePrice = (last.rentMonthly * 12) / Math.max(0.1, p.exitYieldPct / 100);
+    salePrice = (last.rentMonthly * 12) / (Math.max(1, p.exitYieldPct) / 100);
   } else {
     salePrice = p.price * 10000 * Math.pow(1 + p.priceTrendPct / 100, p.simYears);
   }
@@ -165,7 +165,7 @@ export function exitCurve(q) {
   for (let y = 3; y <= q.simYears; y++) {
     const r = real[y - 1];
     const salePrice = q.saleMode === "yield"
-      ? (r.rentMonthly * 12) / Math.max(0.1, q.exitYieldPct / 100)
+      ? (r.rentMonthly * 12) / (Math.max(1, q.exitYieldPct) / 100)
       : q.price * 10000 * Math.pow(1 + q.priceTrendPct / 100, y);
     const sellCost = salePrice * (q.sellCostPct / 100);
     const book = q.price * 10000 - r.accumDep;

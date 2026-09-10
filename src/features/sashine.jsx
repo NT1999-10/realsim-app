@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { computeMetrics } from "../engine.js";
 import { T } from "../theme.js";
 import { Field, Select, cardSt, h2St, LockCard } from "../ui.jsx";
+import { Icon } from "../icons.jsx";
 
 function withPrice(p, price, extraCostsYen) {
   const pctExtra = extraCostsYen > 0 ? (extraCostsYen / (price * 1e4)) * 100 : 0;
@@ -75,7 +76,7 @@ export default function SashineLab({ p, isPro, onUpgrade, auctionRequest = 0 }) 
 
   const content = (
     <section style={cardSt}>
-      <h2 style={h2St}>指値・入札上限逆算機</h2>
+      <h2 style={h2St}><Icon name="auction" size={20} color={T.blue} />指値・入札上限逆算機</h2>
       <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7, marginBottom: 12 }}>
         目標とする投資指標から、この条件で購入できる上限価格を逆算します。
       </div>

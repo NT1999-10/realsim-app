@@ -3,7 +3,7 @@ import {
   ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ReferenceLine, ResponsiveContainer,
 } from "recharts";
-import { PLANS, PURCHASE_URL, verifyLicense, loadPlan, savePlan, aiQuota } from "./plan.js";
+import { PLANS, PURCHASE_URL, verifyLicense, loadPlan, savePlan, aiQuota, can } from "./plan.js";
 import { supabase, authEnabled } from "./auth.js";
 import { T } from "./theme.js";
 import { Field, TextField, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
@@ -14,6 +14,7 @@ import AuctionTab, { followRecord } from "./features/auction.jsx";
 import LeadIntake, { decodeLeadPayload } from "./features/lead-intake.jsx";
 import { YomuWordmark, YomuMark, YomuLock } from "./logo.jsx";
 import { Icon } from "./icons.jsx";
+import { DEMO_PROPERTY_PARAMS, DEMO_RESEARCH } from "./demoData.js";
 
 
 
@@ -44,6 +45,40 @@ const SECTION_ICONS = {
   "01": "occupancy", "02": "yield", "03": "occupancy", "04": "mortgage",
   "05": "manage", "06": "upkeep", "08": "metrics", "09": "yield",
 };
+
+const TAB_HINTS = {
+  home: "保有している物件と、気になっている候補をここで一覧します。まずはサンプル物件を開いてみてください。",
+  sim: "1つの物件について、35年分の収支を月単位で計算します。かんたんモードは3項目、詳細モードでは30以上の前提を自分で設定できます。",
+  cmp: "保存した物件を同じ前提で横に並べ、IRR・DSCR・総合損益で比べます。",
+  ana: "どの前提が結果を最も動かすか、悪条件が重なっても耐えるか、何年目に売るのが得かを調べます。",
+  ops: "買った後の管理です。計画と実績の差、設備の交換時期、確定申告用の集計をここで扱います。",
+  auc: "管理者が登録した競売物件から、収支を逆算して入札の上限額を出します。",
+};
+
+function TabHint({ tab }) {
+  const storageKey = "ui-tabhint-" + tab;
+  const [visible, setVisible] = useState(() => {
+    try { return localStorage.getItem(storageKey) !== "closed"; }
+    catch { return true; }
+  });
+  if (!visible) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10,
+      background: T.aiBg, border: `1px solid ${T.aiLine}`, color: T.ink,
+      borderRadius: T.rS, padding: "9px 11px 9px 14px", marginBottom: 14,
+      fontSize: 12.5, lineHeight: 1.7 }}>
+      <span style={{ flex: 1 }}>{TAB_HINTS[tab]}</span>
+      <button type="button" aria-label="説明を閉じる" onClick={() => {
+        try { localStorage.setItem(storageKey, "closed"); } catch (e) { /* noop */ }
+        setVisible(false);
+      }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 28, height: 28, flex: "0 0 auto", padding: 0, background: "transparent",
+        border: "none", borderRadius: T.pill, color: T.sub, cursor: "pointer" }}>
+        <Icon name="x" size={16} color={T.sub} />
+      </button>
+    </div>
+  );
+}
 
 function Section({ no, title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -133,7 +168,7 @@ const KEY_LEADS = "candidate-leads";
 const KEY_AUCTION_SEARCH = "auction-search";
 const KEY_AUCTION_FOLLOW = "auction-follow";
 const SYNCED_KEYS = [KEY_RESEARCH, KEY_PROPS, KEY_ACTUALS, KEY_LEADS,
-  KEY_AUCTION_SEARCH, KEY_AUCTION_FOLLOW, "ui-mode"];
+  KEY_AUCTION_SEARCH, KEY_AUCTION_FOLLOW, "demo-seeded", "ui-mode"];
 function purgeLocalMirror() {
   try {
     for (const k of SYNCED_KEYS) localStorage.removeItem("rs-" + k);
@@ -162,6 +197,19 @@ async function saveKey(key, value, cap) {
     localSave(key, v);
   }
   return v;
+}
+
+function makeDemoPropertyRecord() {
+  return {
+    id: Date.now(),
+    name: "サンプル: 文京区 1R",
+    savedAt: new Date().toISOString(),
+    isDemo: true,
+    params: {
+      ...DEMO_PROPERTY_PARAMS,
+      equipment: DEMO_PROPERTY_PARAMS.equipment.map((e) => ({ ...e })),
+    },
+  };
 }
 
 // ---------- AI market data(サーバープロキシ経由) ----------
@@ -258,6 +306,9 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
                       background: isBest ? "rgba(46,125,110,0.08)" : "transparent" }}>
                       <td style={{ ...cell, textAlign: "left", fontWeight: 700 }}>
                         {isBest && <span style={{ color: T.good }}>★ </span>}{pr.name}
+                        {pr.isDemo && <span style={{ marginLeft: 7, padding: "2px 7px",
+                          borderRadius: T.pill, background: T.goldSoft, color: T.aiInk,
+                          fontSize: 10.5, whiteSpace: "nowrap" }}>サンプル</span>}
                       </td>
                       <td style={cell}>{pr.params.price.toLocaleString()}万</td>
                       <td style={cell}>{pct(gross, 2)}</td>
@@ -281,7 +332,8 @@ function CompareTab({ properties, current, plan, onUpgrade, onSave, onLoad, onDe
                           padding: "5px 10px", fontSize: 11, marginRight: 6 }}>読込</button>
                         <button onClick={() => onDelete(pr.id)} style={{ padding: "5px 10px",
                           background: "none", color: T.real, border: `1px solid ${T.line}`,
-                          borderRadius: 6, fontSize: 11, cursor: "pointer" }}>削除</button>
+                          borderRadius: 6, fontSize: 11, cursor: "pointer" }}>
+                          {pr.isDemo ? "サンプルを削除" : "削除"}</button>
                       </td>
                     </tr>
                   );
@@ -1264,7 +1316,7 @@ function CompareReportView({ rows, onClose }) {
 }
 
 // ---------- アカウント設定モーダル ----------
-function AccountModal({ open, onClose, user, profile }) {
+function AccountModal({ open, onClose, user, profile, onResetDemo }) {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [msg, setMsg] = useState("");
@@ -1309,6 +1361,15 @@ function AccountModal({ open, onClose, user, profile }) {
       if (!r.ok || d.error) throw new Error(d.error || "エラーが発生しました");
       window.location.href = d.url; // Stripeポータルへ(解約・支払い方法の変更/削除)
     } catch (e) { setMsg(String(e.message || e)); setBusy(""); }
+  };
+
+  const resetDemo = async () => {
+    setBusy("demo"); setMsg("");
+    try {
+      await onResetDemo();
+      setMsg("サンプルデータを再表示しました");
+    } catch (e) { setMsg("再表示に失敗しました: " + String(e.message || e)); }
+    setBusy("");
   };
 
   const deleteAccount = async () => {
@@ -1382,6 +1443,16 @@ function AccountModal({ open, onClose, user, profile }) {
             borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
             opacity: busy === "portal" ? 0.6 : 1 }}>
           {busy === "portal" ? "接続中…" : "管理画面を開く(解約・カード変更/削除)"}</button>
+
+        <div style={secH}>サンプルデータ</div>
+        <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.7, margin: "0 0 10px" }}>
+          初回に表示されるサンプル物件を削除した場合、ここからもう一度表示できます。
+        </p>
+        <button onClick={resetDemo} disabled={busy === "demo"}
+          style={{ padding: "9px 16px", background: "#FFF", color: T.navy,
+            border: `1px solid ${T.navy}`, borderRadius: 8, fontSize: 13,
+            fontWeight: 700, cursor: "pointer", opacity: busy === "demo" ? 0.6 : 1 }}>
+          {busy === "demo" ? "再表示中…" : "サンプルデータを再表示"}</button>
 
         <div style={{ ...secH, color: T.real, borderBottomColor: "rgba(179,64,46,0.3)" }}>
           アカウントの削除</div>
@@ -1796,7 +1867,8 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
   );
 }
 
-function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab, leads, onAddLead, onUpdateLead, onDeleteLead, onSimulateLead }) {
+function HomeTab({ properties, updateProperty, deleteProperty, actuals, isPro, onUpgrade, goTab,
+  leads, onAddLead, onUpdateLead, onDeleteLead, onSimulateLead }) {
   const now = new Date();
   const nowY = now.getFullYear(), nowM = now.getMonth() + 1;
   const monthsFrom = (ym) => {
@@ -1906,11 +1978,13 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
             <div key={r.id} style={{ display: "flex", gap: 14, alignItems: "center",
               flexWrap: "wrap", padding: "9px 0", borderBottom: `1px dashed ${T.line}` }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5,
-                fontWeight: 700, cursor: "pointer", flex: "1 1 200px" }}>
-                <input type="checkbox" checked={!!r.owned}
+                fontWeight: 700, cursor: r.isDemo ? "not-allowed" : "pointer", flex: "1 1 200px" }}>
+                <input type="checkbox" checked={!!r.owned} disabled={!!r.isDemo}
                   onChange={(e) => updateProperty(r.id, { owned: e.target.checked,
                     ownedSince: r.ownedSince || r.savedAt.slice(0, 7) })} />
                 {r.name}
+                {r.isDemo && <span style={{ padding: "2px 8px", borderRadius: T.pill,
+                  background: T.goldSoft, color: T.aiInk, fontSize: 10.5 }}>サンプル</span>}
                 <span style={{ fontWeight: 400, color: T.sub, fontSize: 12 }}>
                   ({r.params.price.toLocaleString()}万円)</span>
               </label>
@@ -1921,7 +1995,14 @@ function HomeTab({ properties, updateProperty, actuals, isPro, onUpgrade, goTab,
                   <input type="month" value={r.ownedSince || r.savedAt.slice(0, 7)}
                     onChange={(e) => updateProperty(r.id, { ownedSince: e.target.value })}
                     style={inSt} />
-                </label>
+                  </label>
+              )}
+              {r.isDemo && (
+                <button onClick={() => deleteProperty(r.id)} style={{ padding: "6px 10px",
+                  background: "none", color: T.real, border: `1px solid ${T.line}`,
+                  borderRadius: 6, fontSize: 11.5, cursor: "pointer" }}>
+                  サンプルを削除
+                </button>
               )}
             </div>
           ))
@@ -2458,14 +2539,13 @@ export default function App() {
   }, [plan, aiTick, profile]);
   const isPro = plan === "pro";
 
-  // ログアウトやプラン降格を検知したら、Pro限定のタブ・モードから退出する
+  // ログアウトやプラン降格を検知したら、Pro限定のタブから退出する
   useEffect(() => {
     const settled = !authEnabled || !user || profile !== null; // プラン確定を待つ
     if (settled && !isPro) {
       if (tab === "ana" || tab === "ops" || tab === "auc") setTab("sim");
-      if (mode === "pro") setMode("easy");
     }
-  }, [isPro, user, profile, tab, mode]);
+  }, [isPro, user, profile, tab]);
   const [records, setRecords] = useState([]);
   const [properties, setProperties] = useState([]);
   const [actuals, setActuals] = useState({ startYear: new Date().getFullYear(), items: [] });
@@ -2474,7 +2554,15 @@ export default function App() {
   const [storageNote, setStorageNote] = useState("");
   useEffect(() => {
     loadKey(KEY_RESEARCH, []).then(setRecords);
-    loadKey(KEY_PROPS, []).then(setProperties);
+    (async () => {
+      const saved = await loadKey(KEY_PROPS, []);
+      const demoSeeded = await loadKey("demo-seeded", false);
+      if (saved.length === 0 && !demoSeeded) {
+        const next = await saveKey(KEY_PROPS, [makeDemoPropertyRecord()], 30);
+        await saveKey("demo-seeded", true);
+        setProperties(next);
+      } else setProperties(saved);
+    })();
     loadKey(KEY_ACTUALS, null).then((a) =>
       setActuals(a || { startYear: new Date().getFullYear(), items: [] }));
     loadKey(KEY_AUCTION_FOLLOW, []).then(setAuctionFollows);
@@ -2486,15 +2574,17 @@ export default function App() {
       ? "ログインすると、保存データ(リサーチ・物件・予実)がアカウントに保存され、他の端末からも利用できます"
       : "");
   }, [user]);
+  // この "pro" は詳細モードの意味であり、プランとは無関係。
   const switchMode = (k) => {
-    if (k === "pro" && !isPro) { setUpgradeOpen(true); return; }
+    if (k === "pro" && !can(plan, "detailMode")) return;
     setMode(k); saveKey("ui-mode", k);
   };
 
   const persistActuals = async (next) => { setActuals(next); await saveKey(KEY_ACTUALS, next); };
   const saveCurrentProperty = async (name) => {
-    if (properties.length >= PLANS[plan].maxProperties) { setUpgradeOpen(true); return; }
-    const rec = { id: Date.now(), name: name || `物件${properties.length + 1}`,
+    const savedCount = properties.filter((r) => !r.isDemo).length;
+    if (savedCount >= PLANS[plan].maxProperties) { setUpgradeOpen(true); return; }
+    const rec = { id: Date.now(), name: name || `物件${savedCount + 1}`,
       savedAt: new Date().toISOString(),
       params: { ...p, equipment: p.equipment.map((e) => ({ ...e })) } };
     setProperties(await saveKey(KEY_PROPS, [rec, ...properties], 30));
@@ -2621,6 +2711,14 @@ export default function App() {
   const deleteProperty = async (id) =>
     setProperties(await saveKey(KEY_PROPS, properties.filter((r) => r.id !== id)));
 
+  const resetDemoData = async () => {
+    await saveKey("demo-seeded", false);
+    const withoutDemo = properties.filter((r) => !r.isDemo);
+    const next = await saveKey(KEY_PROPS, [makeDemoPropertyRecord(), ...withoutDemo], 30);
+    setProperties(next);
+    await saveKey("demo-seeded", true);
+  };
+
   const runFetch = async () => {
     if (authEnabled && !user) { setAuthOpen(true); return; }
     if (!isPro) { setUpgradeOpen(true); return; }
@@ -2652,6 +2750,12 @@ export default function App() {
     } catch (e) {
       setAiState({ status: "error", data: null, error: String(e.message || e) });
     }
+  };
+
+  const showDemoResearch = () => {
+    setArea("東京都文京区");
+    setPtype("中古ワンルーム");
+    setAiState({ status: "done", data: DEMO_RESEARCH, error: null, isDemo: true });
   };
 
   const applyData = (d) => {
@@ -2769,7 +2873,7 @@ export default function App() {
         {authOpen && <AuthModal open onClose={() => setAuthOpen(false)} />}
         {pwResetOpen && <PasswordResetModal open onClose={() => setPwResetOpen(false)} />}
         {accountOpen && <AccountModal open onClose={() => setAccountOpen(false)}
-          user={user} profile={profile} />}
+          user={user} profile={profile} onResetDemo={resetDemoData} />}
         {reportOpen && isPro && (
           <ReportView p={p}
             initialTitle="検討物件 収支分析レポート"
@@ -2797,8 +2901,11 @@ export default function App() {
           ))}
         </nav>
 
+        <TabHint key={tab} tab={tab} />
+
         {tab === "home" && (
           <HomeTab properties={properties} updateProperty={updateProperty}
+            deleteProperty={deleteProperty}
             leads={leads} onAddLead={addLead} onUpdateLead={updateLead}
             onDeleteLead={deleteLead} onSimulateLead={simulateLead}
             actuals={actuals} isPro={isPro}
@@ -2827,8 +2934,8 @@ export default function App() {
           </div>
           <span style={{ fontSize: 11, color: T.sub }}>
             {mode === "easy"
-              ? "3項目+AI市場調査だけで診断できます。残りは保守的な値で自動設定済み"
-              : "全パラメータを編集できます"}
+              ? "3項目だけで診断できます。残りの前提は保守的な値で自動設定されています"
+              : "30以上の前提をすべて自分で設定できます。Freeプランでも使えます"}
           </span>
         </div>
 
@@ -2885,6 +2992,11 @@ export default function App() {
                 opacity: aiState.status === "loading" ? 0.6 : 1 }}>
               {aiState.status === "loading" ? "調査中(数十秒かかります)…" : "市場データを調査する"}
             </button>
+            <button onClick={showDemoResearch}
+              style={{ ...btnSt("#FFF"), padding: "9px 18px", color: T.navy,
+                border: `1px solid ${T.navy}`, boxShadow: "none", fontSize: 13 }}>
+              サンプル結果を見る（API消費なし）
+            </button>
             {aiState.status === "done" && (
               <button onClick={applyAi}
                 style={{ padding: "9px 18px", background: T.navy, color: "#FFF", border: "none",
@@ -2901,6 +3013,13 @@ export default function App() {
           {aiState.status === "done" && aiState.data && (
             <div style={{ marginTop: 12, fontSize: 12.5, lineHeight: 1.7, color: T.ink,
               background: "#FFF", borderRadius: 8, padding: 12, border: `1px solid ${T.line}` }}>
+              {aiState.isDemo && (
+                <div style={{ marginBottom: 10, padding: "9px 11px", background: T.warnBg,
+                  color: T.warnInk, border: `1px solid ${T.warnLine}`, borderRadius: T.rS }}>
+                  これは操作を体験するためのサンプルです。実在のエリア調査結果ではありません。<br />
+                  実際の調査は「市場データを調査する」から実行できます（Proプラン・月10回）。
+                </div>
+              )}
               <div style={{ marginBottom: 8 }}><AiValues d={aiState.data} /></div>
               <div style={{ color: T.sub }}>{aiState.data.summary}</div>
               {Array.isArray(aiState.data.sources) && aiState.data.sources.length > 0 && (

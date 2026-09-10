@@ -10,9 +10,22 @@
 const SALT = "genjitsuha-v1-salt-7f3a"; // 変更したら genkey.mjs 側も同じ値に
 
 export const PLANS = {
-  free: { id: "free", label: "Free", maxProperties: 3, aiPerMonth: 0 },
-  pro:  { id: "pro",  label: "Pro",  maxProperties: Infinity, aiPerMonth: 10 },
+  free: {
+    id: "free", label: "Free", maxProperties: 3, aiPerMonth: 0,
+    detailMode: true,
+    analysis: false, ops: false, auction: false, report: false,
+  },
+  pro: {
+    id: "pro", label: "Pro", maxProperties: Infinity, aiPerMonth: 10,
+    detailMode: true,
+    analysis: true, ops: true, auction: true, report: true,
+  },
 };
+
+/** プランがその機能を使えるか */
+export function can(plan, feature) {
+  return !!(PLANS[plan] || PLANS.free)[feature];
+}
 
 // Stripe Payment Link 等の購入ページURLをここに設定
 export const PURCHASE_URL = "https://buy.stripe.com/test_00w6oGeFO4MD76k0yC6EU00";

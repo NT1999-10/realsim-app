@@ -176,3 +176,30 @@ export function exitCurve(q) {
   }
   return pts;
 }
+
+// ---------- デッドクロス ----------
+// 税の計算がオフでも、限界税率で税を計算して判定する(画面に出す収支の数値は変えない)。
+// depEndYear: 減価償却費が初めて0になる年(分析期間内に無ければ null)
+// taxIncrease: その年に償却が無くなったことで増える税額(円/年)
+// rentShare: taxIncrease ÷ 当初の年間家賃
+export function deadCrossInfo(q) {
+  const taxed = simulate({ ...q, taxOn: true }, true);
+  const depAnnual = taxed[0].dep;
+  const crossRow = taxed.find((r) => r.loanPaid - r.interestPaid > r.dep);
+  const endRow = taxed.find((r, i) => i > 0 && r.dep === 0 && taxed[i - 1].dep > 0);
+  let taxIncrease = null, rentShare = null;
+  if (endRow) {
+    const base = endRow.income - endRow.expense - endRow.interestPaid; // 償却が無い年の課税所得
+    const f = (x) => (q.lossOffset ? x : Math.max(0, x));
+    taxIncrease = (f(base) - f(base - depAnnual)) * (q.taxRate / 100);
+    rentShare = q.rent > 0 ? taxIncrease / (q.rent * 12) : null;
+  }
+  const deficitRow = taxed.find((r) => r.cf < 0);
+  return {
+    depAnnual,
+    crossYear: crossRow ? crossRow.year : null,
+    depEndYear: endRow ? endRow.year : null,
+    taxIncrease, rentShare,
+    afterTaxDeficitYear: deficitRow ? deficitRow.year : null,
+  };
+}

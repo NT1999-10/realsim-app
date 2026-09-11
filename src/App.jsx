@@ -7,7 +7,7 @@ import { PLANS, PURCHASE_URL, verifyLicense, loadPlan, savePlan, aiQuota, can } 
 import { supabase, authEnabled } from "./auth.js";
 import { T } from "./theme.js";
 import { Field, TextField, Select, Kpi, cardSt, h2St, btnSt, LockCard } from "./ui.jsx";
-import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf } from "./engine.js";
+import { simulate, computeMetrics, saleAnalysis, exitCurve, irrOf, deadCrossInfo } from "./engine.js";
 import SashineLab from "./features/sashine.jsx";
 import SoubaCheck from "./features/souba.jsx";
 import AuctionTab, { followRecord } from "./features/auction.jsx";
@@ -778,6 +778,10 @@ function diagnose(q, m) {
   // 長期投資では後半に単年赤字が混じるのは通常であり、それだけで警告するのは過剰
   if (m.firstDeficitYear && m.firstDeficitYear <= 5 && monthly1 >= 0 && !goodOverall)
     warns.push(`${m.firstDeficitYear}年目という早期に単年赤字へ転落します。運営初期段階での持ち出しに備える必要があります`);
+  // デッドクロス: ローン返済中に償却が切れ、増える税が当初家賃の1割以上なら注意喚起(税の計算がオフでも判定する)
+  const dc = deadCrossInfo(q);
+  if (dc.depEndYear && dc.depEndYear <= q.loanYears && dc.rentShare != null && dc.rentShare >= 0.1)
+    warns.push(`${dc.depEndYear}年目に減価償却が切れ、税が年約${fmtMan(dc.taxIncrease)}増えます(当初家賃の${Math.round(dc.rentShare * 100)}%)。ローン返済が続く中で手元の収支が一段悪化する「デッドクロス」です${q.taxOn ? "" : `。限界税率${q.taxRate}%での試算で、税の計算をオンにすると年次明細で確認できます`}`);
 
   if (q.vacancyMonths < 1) optimistic.push("空室期間1ヶ月未満は楽観的です(一般に1〜3ヶ月)");
   if (q.rentDecline < 0)
@@ -2798,6 +2802,7 @@ export default function App() {
   const sale = useMemo(() => saleAnalysis(p, real), [p, real]);
   const metricsAll = useMemo(() => computeMetrics(p), [p]);
   const diag = useMemo(() => diagnose(p, metricsAll), [p, metricsAll]);
+  const deadCross = useMemo(() => deadCrossInfo(p), [p]);
 
   const chartData = real.map((r, i) => ({
     year: r.year,
@@ -3114,6 +3119,12 @@ export default function App() {
                sub={gap >= 0 ? "楽観シミュが見落とす金額" : "更新料・礼金収入の計上で保守が上回る試算"} />
           <Kpi label="単年CF初赤字" value={firstDeficit ? `${firstDeficit.year}年目` : "なし"}
                color={firstDeficit ? T.warnInk : T.good} />
+          <Kpi label="償却切れ(デッドクロス)"
+               value={deadCross.depEndYear ? `${deadCross.depEndYear}年目` : "期間内なし"}
+               color={deadCross.depEndYear && deadCross.depEndYear <= p.loanYears && deadCross.rentShare >= 0.1 ? T.warnInk : T.ink}
+               sub={deadCross.depEndYear
+                 ? `税 +${fmtMan(deadCross.taxIncrease)}/年(限界税率${p.taxRate}%)`
+                 : deadCross.depAnnual > 0 ? `償却は${p.simYears}年の分析期間中続きます` : "減価償却の設定がありません"} />
           {p.saleOn && (
             <Kpi label={`売却込み総合損益(${p.simYears}年目売却)`}
                  value={fmtMan(sale.total)} color={sale.total < 0 ? T.real : T.good}
@@ -3188,7 +3199,7 @@ export default function App() {
                 fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                 <thead>
                   <tr style={{ borderBottom: `3px solid ${T.blue}`, color: T.navy }}>
-                    {["年", "金利", "収入", "経費", "返済", p.taxOn ? "税" : null, "単年CF", "累積CF", "残債"]
+                    {["年", "金利", "収入", "経費", "返済", "元金", "償却", p.taxOn ? "税" : null, "単年CF", "累積CF", "残債"]
                       .filter(Boolean).map((h) => (
                       <th key={h} style={{ padding: "6px 8px", textAlign: "right" }}>{h}</th>
                     ))}
@@ -3198,11 +3209,13 @@ export default function App() {
                   {real.map((r) => (
                     <tr key={r.year} style={{ borderBottom: `1px solid ${T.line}`,
                       color: r.cf < 0 ? T.real : T.ink }}>
-                      <td style={{ padding: "5px 8px", textAlign: "right" }}>{r.year}</td>
+                      <td style={{ padding: "5px 8px", textAlign: "right" }}>{r.year === deadCross.depEndYear ? "償却切れ " : ""}{r.year}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right" }}>{r.rate.toFixed(2)}%</td>
                       <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.income)}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.expense)}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.loanPaid)}</td>
+                      <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.loanPaid - r.interestPaid)}</td>
+                      <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.dep)}</td>
                       {p.taxOn && <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.taxPaid)}</td>}
                       <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700 }}>{fmtMan(r.cf)}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right" }}>{fmtMan(r.cum)}</td>

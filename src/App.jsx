@@ -1450,7 +1450,7 @@ function AccountModal({ open, onClose, user, profile, onResetDemo }) {
 
         <div style={secH}>サンプルデータ</div>
         <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.7, margin: "0 0 10px" }}>
-          初回に表示されるサンプル物件を削除した場合、ここからもう一度表示できます。
+          サンプル物件（文京区 1R）を物件一覧に追加します。削除した場合や、以前から使っていて一覧に無い場合も、ここから追加できます。保存済みの物件は消えません。
         </p>
         <button onClick={resetDemo} disabled={busy === "demo"}
           style={{ padding: "9px 16px", background: "#FFF", color: T.navy,
@@ -1871,7 +1871,7 @@ function LeadTray({ leads, isPro, onAdd, onUpdate, onDelete, onSimulate }) {
   );
 }
 
-function HomeTab({ properties, updateProperty, deleteProperty, actuals, isPro, onUpgrade, goTab,
+function HomeTab({ properties, updateProperty, deleteProperty, onLoad, actuals, isPro, onUpgrade, goTab,
   leads, onAddLead, onUpdateLead, onDeleteLead, onSimulateLead }) {
   const now = new Date();
   const nowY = now.getFullYear(), nowM = now.getMonth() + 1;
@@ -2001,6 +2001,8 @@ function HomeTab({ properties, updateProperty, deleteProperty, actuals, isPro, o
                     style={inSt} />
                   </label>
               )}
+              <button onClick={() => onLoad(r)} style={{ ...btnSt(T.navy),
+                padding: "6px 12px", fontSize: 11.5 }}>開く</button>
               {r.isDemo && (
                 <button onClick={() => deleteProperty(r.id)} style={{ padding: "6px 10px",
                   background: "none", color: T.real, border: `1px solid ${T.line}`,
@@ -2910,7 +2912,7 @@ export default function App() {
 
         {tab === "home" && (
           <HomeTab properties={properties} updateProperty={updateProperty}
-            deleteProperty={deleteProperty}
+            deleteProperty={deleteProperty} onLoad={loadProperty}
             leads={leads} onAddLead={addLead} onUpdateLead={updateLead}
             onDeleteLead={deleteLead} onSimulateLead={simulateLead}
             actuals={actuals} isPro={isPro}
@@ -3115,8 +3117,10 @@ export default function App() {
           <Kpi label={`累積CF ${p.simYears}年(楽観)`} value={fmtMan(lastOpt.cum)} color={T.opt} />
           <Kpi label="楽観とのギャップ"
                value={gap >= 0 ? "−" + fmtMan(gap) : "+" + fmtMan(-gap)}
-               color={gap >= 0 ? T.real : T.good}
-               sub={gap >= 0 ? "楽観シミュが見落とす金額" : "更新料・礼金収入の計上で保守が上回る試算"} />
+               color={gap >= 0 ? T.real : p.rentDecline < 0 ? T.warnInk : T.good}
+               sub={gap >= 0 ? "楽観シミュが見落とす金額"
+                 : p.rentDecline < 0 ? "家賃上昇の前提で保守が楽観を上回っています。前提を確認してください"
+                 : "更新料・礼金収入の計上で保守が上回る試算"} />
           <Kpi label="単年CF初赤字" value={firstDeficit ? `${firstDeficit.year}年目` : "なし"}
                color={firstDeficit ? T.warnInk : T.good} />
           <Kpi label="償却切れ(デッドクロス)"
